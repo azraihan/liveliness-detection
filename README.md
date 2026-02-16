@@ -1,0 +1,204 @@
+# 🔬 Face Liveness Detection — Flutter Demo
+
+A beautiful, mock face liveness detection UI built in Flutter. Features a dark "deep space biometric" aesthetic with animated glowing arcs, live camera feed, and smooth transitions.
+
+---
+
+## 📱 App Flow
+
+| Page | Description |
+|------|-------------|
+| **Landing** | Instructions + animated face scanner icon → tap to start |
+| **Liveness** | Camera in circular frame + 4 glowing arc segments that pulse and extend per step |
+| **Success** | Expanding green rings + animated checkmark |
+
+---
+
+## ⚙️ Prerequisites
+
+Make sure these are installed on your machine:
+
+| Tool | Version | Link |
+|------|---------|------|
+| Flutter SDK | ≥ 3.0.0 | https://docs.flutter.dev/get-started/install |
+| Dart | ≥ 3.0.0 | Included with Flutter |
+| Android Studio / Xcode | Latest | For emulators / device builds |
+| A real device (recommended) | iOS or Android | Camera won't work on most emulators |
+
+Verify your setup:
+```bash
+flutter doctor
+```
+
+---
+
+## 🚀 Quick Start
+
+### 1. Clone the repository
+
+```bash
+git clone https://github.com/YOUR_USERNAME/face_liveness_demo.git
+cd face_liveness_demo
+```
+
+### 2. Install dependencies
+
+```bash
+flutter pub get
+```
+
+### 3. Connect your phone
+
+Enable **Developer Mode** on your device:
+
+- **Android**: Settings → About Phone → tap Build Number 7 times → enable USB Debugging
+- **iOS**: Connect via Xcode once, trust the computer on device
+
+Verify device is detected:
+```bash
+flutter devices
+```
+
+### 4. Run the app
+
+```bash
+flutter run
+```
+
+For a specific device:
+```bash
+flutter run -d <device_id>
+```
+
+---
+
+## 📱 Platform Setup
+
+### Android
+
+Add camera permission to `android/app/src/main/AndroidManifest.xml` inside `<manifest>`:
+
+```xml
+<uses-permission android:name="android.permission.CAMERA" />
+```
+
+Also ensure `minSdkVersion` is at least **21** in `android/app/build.gradle`:
+
+```gradle
+android {
+    defaultConfig {
+        minSdkVersion 21
+        ...
+    }
+}
+```
+
+> **Note:** Recent Flutter versions (3.19+) already default to minSdkVersion 21.
+
+---
+
+### iOS
+
+Add the camera permission description to `ios/Runner/Info.plist` inside `<dict>`:
+
+```xml
+<key>NSCameraUsageDescription</key>
+<string>Face Liveness needs your camera to verify your identity.</string>
+```
+
+Then open Xcode, select your Team under **Signing & Capabilities**, and trust your developer certificate on the device.
+
+---
+
+## 🐙 Push to GitHub
+
+### First time setup
+
+```bash
+# Initialize git (if not done)
+git init
+git add .
+git commit -m "Initial commit: Face Liveness Demo"
+
+# Create a new repo on github.com, then:
+git remote add origin https://github.com/YOUR_USERNAME/face_liveness_demo.git
+git branch -M main
+git push -u origin main
+```
+
+### Subsequent pushes
+
+```bash
+git add .
+git commit -m "Your commit message"
+git push
+```
+
+---
+
+## 📁 Project Structure
+
+```
+lib/
+├── main.dart                    # App entry point & theme
+├── painters/
+│   └── face_frame_painter.dart  # Custom arc painter + scan line painter
+└── pages/
+    ├── landing_page.dart        # Intro page with animated scanner icon
+    ├── liveness_page.dart       # Camera + arc detection UI (simulated)
+    └── success_page.dart        # Verification success with animations
+```
+
+---
+
+## 🎨 Design System
+
+| Token | Value | Usage |
+|-------|-------|-------|
+| Background | `#080C14` | Main background |
+| Surface | `#111827` | Cards, containers |
+| Cyan accent | `#00E5FF` | Active arcs, buttons, highlights |
+| Green accent | `#00FF9D` | Success state |
+| Purple accent | `#6C63FF` | Secondary rings (landing page) |
+
+---
+
+## 🔧 Customisation
+
+**Change step timing** — in `liveness_page.dart`, find:
+```dart
+Timer.periodic(const Duration(milliseconds: 2800), ...)
+```
+Increase the value to give more time per step.
+
+**Change arc appearance** — in `face_frame_painter.dart`, adjust:
+- `_baseSweepDeg` — size of each arc segment
+- Stroke widths and blur radii in `_drawArc()`
+
+**Add more steps** — in `liveness_page.dart`, extend the `_steps` list.
+
+---
+
+## 📦 Dependencies
+
+```yaml
+camera: ^0.10.5+9   # Live camera preview
+```
+
+---
+
+## 🛠 Troubleshooting
+
+| Problem | Fix |
+|---------|-----|
+| Camera shows placeholder | Make sure you granted camera permission and are on a real device |
+| `flutter doctor` shows missing tools | Follow the links it provides to install missing items |
+| iOS build fails with signing error | In Xcode → Signing & Capabilities → set a valid team |
+| Android: `minSdkVersion` error | Set `minSdkVersion 21` in `android/app/build.gradle` |
+| Pub get fails | Run `flutter clean && flutter pub get` |
+
+---
+
+## 📄 License
+
+MIT — free to use for personal or commercial projects.
