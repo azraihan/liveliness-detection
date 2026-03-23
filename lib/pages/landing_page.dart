@@ -76,23 +76,25 @@ class _LandingPageState extends State<LandingPage>
               begin: const Offset(0, 0.04),
               end: Offset.zero,
             ).animate(_entryAnim),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 28),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SizedBox(height: 28),
-                  _buildTopRow(),
-                  const SizedBox(height: 44),
-                  _buildHeroIcon(),
-                  const SizedBox(height: 36),
-                  _buildTitleBlock(),
-                  const SizedBox(height: 36),
-                  _buildChecklist(),
-                  const Spacer(),
-                  _buildStartButton(),
-                  const SizedBox(height: 36),
-                ],
+            child: SingleChildScrollView(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 28),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: 28),
+                    _buildTopRow(),
+                    const SizedBox(height: 44),
+                    _buildHeroIcon(),
+                    const SizedBox(height: 36),
+                    _buildTitleBlock(),
+                    const SizedBox(height: 36),
+                    _buildChecklist(),
+                    const SizedBox(height: 24),
+                    _buildStartButton(),
+                    const SizedBox(height: 36),
+                  ],
+                ),
               ),
             ),
           ),
@@ -267,7 +269,7 @@ class _LandingPageState extends State<LandingPage>
         ),
         const SizedBox(height: 12),
         Text(
-          'We'll use your camera to confirm it's really you. This check takes about 15 seconds.',
+          "We'll use your camera to confirm it's really you. This check takes about 15 seconds.",
           style: TextStyle(
             color: Colors.white.withOpacity(0.42),
             fontSize: 14,

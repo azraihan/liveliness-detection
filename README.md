@@ -82,18 +82,19 @@ Add camera permission to `android/app/src/main/AndroidManifest.xml` inside `<man
 <uses-permission android:name="android.permission.CAMERA" />
 ```
 
-Also ensure `minSdkVersion` is at least **21** in `android/app/build.gradle`:
+Also ensure `minSdk` is at least **21** in `android/app/build.gradle.kts`:
 
-```gradle
+```kotlin
 android {
     defaultConfig {
-        minSdkVersion 21
-        ...
+        minSdk = 21
+        // or use the Flutter default:
+        // minSdk = flutter.minSdkVersion
     }
 }
 ```
 
-> **Note:** Recent Flutter versions (3.19+) already default to minSdkVersion 21.
+> **Note:** Recent Flutter versions (3.19+) already default to minSdk 21 via `flutter.minSdkVersion`.
 
 ---
 

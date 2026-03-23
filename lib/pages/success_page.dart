@@ -183,7 +183,7 @@ class _SuccessPageState extends State<SuccessPage>
               ),
               const SizedBox(height: 14),
               Text(
-                'Your face has been successfully authenticated. You're all set to continue.',
+                "Your face has been successfully authenticated. You're all set to continue.",
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: Colors.white.withOpacity(0.40),
