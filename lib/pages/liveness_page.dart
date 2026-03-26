@@ -24,6 +24,10 @@ class _LivenessPageState extends State<LivenessPage>
   bool _isProcessing = false;
   bool _isNavigating = false;
 
+  // Majority voting
+  static const int _maxSamples = 10;
+  final List<bool> _samples = [];
+
   // Inference state
   bool _hasResult = false;
   bool _isReal = false;
@@ -154,6 +158,11 @@ class _LivenessPageState extends State<LivenessPage>
       await File(imageFile.path).delete();
 
       if (mounted && !_isNavigating) {
+        _samples.add(isReal);
+
+        final int realCount  = _samples.where((r) => r).length;
+        final int total      = _samples.length;
+
         setState(() {
           _hasResult  = true;
           _isReal     = isReal;
@@ -161,8 +170,19 @@ class _LivenessPageState extends State<LivenessPage>
           _confidence = confidence;
         });
 
-        if (isReal && confidence > 0.65) {
-          _onRealDetected();
+        if (total >= _maxSamples) {
+          final bool majorityReal = realCount > total ~/ 2;
+          if (majorityReal) {
+            _onRealDetected();
+          } else {
+            // Reset and try again
+            _samples.clear();
+            setState(() {
+              _isSpoof   = true;
+              _isReal    = false;
+              _hasResult = true;
+            });
+          }
         }
       }
     } catch (e) {
@@ -175,6 +195,7 @@ class _LivenessPageState extends State<LivenessPage>
   void _onRealDetected() {
     if (_isNavigating) return;
     _isNavigating = true;
+    _samples.clear();
     _inferenceTimer?.cancel();
 
     _extCtrl.reset();
@@ -396,8 +417,8 @@ class _LivenessPageState extends State<LivenessPage>
       accentColor = const Color(0xFF00E5FF);
       icon        = Icons.radar_rounded;
       title       = _hasResult ? 'Scanning…' : 'Scanning…';
-      subtitle    = _hasResult && _isReal
-          ? 'Real face detected (${(_confidence * 100).toStringAsFixed(1)}%)'
+      subtitle    = _samples.isNotEmpty
+          ? 'Analysing… ${_samples.length}/$_maxSamples samples'
           : 'Hold your face inside the circle';
     }
 
