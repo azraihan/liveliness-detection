@@ -2,7 +2,7 @@
 
 ## 📥 Download APK
 
-[Download APK](apk/app-release.apk)
+[Download APK](https://github.com/azraihan/liveliness-detection/releases/download/v1.0.0/app-release.apk)
 
 > To build the APK yourself: `flutter build apk --release`
 
