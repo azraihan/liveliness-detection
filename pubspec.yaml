@@ -1,5 +1,5 @@
 name: face_liveness_demo
-description: A beautiful face liveness detection demo app.
+description: A face liveness detection app using PyTorch Mobile.
 publish_to: 'none'
 version: 1.0.0+1
 
@@ -11,6 +11,7 @@ dependencies:
     sdk: flutter
   camera: ^0.10.5+9
   cupertino_icons: ^1.0.6
+  flutter_pytorch_lite: ^0.1.0+3
 
 dev_dependencies:
   flutter_test:
@@ -19,3 +20,5 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/

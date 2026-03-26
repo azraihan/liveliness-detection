@@ -24,7 +24,7 @@ android {
         applicationId = "com.example.face_liveness_demo"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        minSdk = 24
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
@@ -35,6 +35,18 @@ android {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
+        }
+    }
+
+    // Don't compress PyTorch model files
+    androidResources {
+        noCompress += listOf("pt", "ptl")
+    }
+
+    // Fix native libs conflict
+    packaging {
+        jniLibs {
+            pickFirsts += setOf("**/libc++_shared.so")
         }
     }
 }
