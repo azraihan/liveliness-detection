@@ -1,58 +1,12 @@
 import 'dart:async';
+import 'dart:io';
+import 'dart:typed_data';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_pytorch_lite/flutter_pytorch_lite.dart';
 import '../painters/face_frame_painter.dart';
 import 'success_page.dart';
-
-// ─── Step model ──────────────────────────────────────────────────────────────
-
-class _Step {
-  final String title;
-  final String subtitle;
-  final FaceDirection direction;
-  final IconData icon;
-  const _Step({
-    required this.title,
-    required this.subtitle,
-    required this.direction,
-    required this.icon,
-  });
-}
-
-const _steps = [
-  _Step(
-    title: 'Position your face',
-    subtitle: 'Align your face inside the circle',
-    direction: FaceDirection.none,
-    icon: Icons.face_retouching_natural,
-  ),
-  _Step(
-    title: 'Turn left slowly',
-    subtitle: 'Rotate your head to the left',
-    direction: FaceDirection.left,
-    icon: Icons.arrow_back_rounded,
-  ),
-  _Step(
-    title: 'Turn right slowly',
-    subtitle: 'Rotate your head to the right',
-    direction: FaceDirection.right,
-    icon: Icons.arrow_forward_rounded,
-  ),
-  _Step(
-    title: 'Look upward',
-    subtitle: 'Tilt your chin slightly upward',
-    direction: FaceDirection.up,
-    icon: Icons.arrow_upward_rounded,
-  ),
-  _Step(
-    title: 'Look downward',
-    subtitle: 'Tilt your chin slightly downward',
-    direction: FaceDirection.down,
-    icon: Icons.arrow_downward_rounded,
-  ),
-];
-
-// ─── Page ─────────────────────────────────────────────────────────────────────
 
 class LivenessPage extends StatefulWidget {
   const LivenessPage({super.key});
@@ -62,31 +16,36 @@ class LivenessPage extends StatefulWidget {
 
 class _LivenessPageState extends State<LivenessPage>
     with TickerProviderStateMixin {
-  // Camera
+  // Camera & model
   CameraController? _camera;
+  Module? _module;
   bool _cameraReady = false;
+  bool _modelLoaded = false;
+  bool _isProcessing = false;
+  bool _isNavigating = false;
+
+  // Inference state
+  bool _hasResult = false;
+  bool _isReal = false;
+  bool _isSpoof = false;
+  double _confidence = 0.0;
+
+  Timer? _inferenceTimer;
+
+  static const List<double> _mean = [0.485, 0.456, 0.406];
+  static const List<double> _std  = [0.229, 0.224, 0.225];
 
   // Animations
   late final AnimationController _pulseCtrl;
   late final AnimationController _extCtrl;
-  late final AnimationController _cardCtrl;
-
   late final Animation<double> _pulseAnim;
   late final Animation<double> _extAnim;
-  late final Animation<double> _cardFade;
-  late final Animation<Offset> _cardSlide;
-
-  // State
-  int _stepIndex = 0;
-  bool _isComplete = false;
-  Timer? _timer;
 
   @override
   void initState() {
     super.initState();
     _initAnimations();
-    _initCamera();
-    _startSimulation();
+    _initAll();
   }
 
   void _initAnimations() {
@@ -97,20 +56,30 @@ class _LivenessPageState extends State<LivenessPage>
 
     _extCtrl = AnimationController(
         vsync: this, duration: const Duration(milliseconds: 600));
-    _extAnim =
-        CurvedAnimation(parent: _extCtrl, curve: Curves.elasticOut);
-
-    _cardCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 380));
-    _cardFade =
-        CurvedAnimation(parent: _cardCtrl, curve: Curves.easeOut);
-    _cardSlide = Tween<Offset>(
-      begin: const Offset(0, 0.15),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(parent: _cardCtrl, curve: Curves.easeOutCubic));
-
-    _cardCtrl.forward();
+    _extAnim = CurvedAnimation(parent: _extCtrl, curve: Curves.elasticOut);
     _extCtrl.forward();
+  }
+
+  Future<void> _initAll() async {
+    await Future.wait([_loadModel(), _initCamera()]);
+    if (mounted && _modelLoaded && _cameraReady) {
+      _startInference();
+    }
+  }
+
+  Future<void> _loadModel() async {
+    try {
+      final filePath = '${Directory.systemTemp.path}/mobilenetv2_mobile.ptl';
+      final modelFile = File(filePath);
+      if (!await modelFile.exists()) {
+        final data = await rootBundle.load('assets/mobilenetv2_mobile.ptl');
+        await modelFile.writeAsBytes(data.buffer.asUint8List());
+      }
+      _module = await FlutterPytorchLite.load(filePath);
+      if (mounted) setState(() => _modelLoaded = true);
+    } catch (e) {
+      debugPrint('Model error: $e');
+    }
   }
 
   Future<void> _initCamera() async {
@@ -122,49 +91,96 @@ class _LivenessPageState extends State<LivenessPage>
         orElse: () => cameras.first,
       );
       _camera = CameraController(cam, ResolutionPreset.medium,
-          enableAudio: false);
+          enableAudio: false, imageFormatGroup: ImageFormatGroup.jpeg);
       await _camera!.initialize();
       if (mounted) setState(() => _cameraReady = true);
-    } catch (_) {
-      // Silently continue with placeholder if camera fails
+    } catch (e) {
+      debugPrint('Camera error: $e');
     }
   }
 
-  void _startSimulation() {
-    _timer =
-        Timer.periodic(const Duration(milliseconds: 2800), (t) {
-      if (!mounted) {
-        t.cancel();
-        return;
-      }
-      if (_stepIndex < _steps.length - 1) {
-        _advanceStep();
-      } else {
-        t.cancel();
-        _finishVerification();
-      }
-    });
+  void _startInference() {
+    _inferenceTimer =
+        Timer.periodic(const Duration(milliseconds: 500), (_) => _runInference());
   }
 
-  void _advanceStep() {
-    _cardCtrl.reverse().then((_) {
-      if (!mounted) return;
-      setState(() => _stepIndex++);
-      _extCtrl.reset();
-      _extCtrl.forward();
-      _cardCtrl.forward();
-    });
+  Future<void> _runInference() async {
+    if (!_modelLoaded || !_cameraReady || _isProcessing || _isNavigating) return;
+    if (_camera == null || !_camera!.value.isInitialized || _module == null) return;
+
+    _isProcessing = true;
+    try {
+      final XFile imageFile = await _camera!.takePicture();
+
+      final imageProvider = FileImage(File(imageFile.path));
+      final image = await TensorImageUtils.imageProviderToImage(imageProvider);
+
+      // Get raw tensor (pixel values 0.0–1.0, NCHW: [1, 3, 224, 224])
+      final Tensor rawTensor = await TensorImageUtils.imageToFloat32Tensor(
+        image,
+        width: 224,
+        height: 224,
+      );
+
+      // Apply ImageNet normalization manually
+      final Float32List rawData = rawTensor.dataAsFloat32List;
+      const int pixelCount = 224 * 224;
+      final Float32List normData = Float32List(3 * pixelCount);
+      for (int c = 0; c < 3; c++) {
+        final double m = _mean[c];
+        final double s = _std[c];
+        final int offset = c * pixelCount;
+        for (int i = 0; i < pixelCount; i++) {
+          normData[offset + i] = (rawData[offset + i] - m) / s;
+        }
+      }
+
+      final Tensor inputTensor = Tensor.fromBlobFloat32(
+        normData,
+        Int64List.fromList([1, 3, 224, 224]),
+      );
+
+      final IValue output = await _module!.forward([IValue.from(inputTensor)]);
+      final Float32List outputData = output.toTensor().dataAsFloat32List;
+
+      double prob = 0.5;
+      if (outputData.isNotEmpty) {
+        prob = outputData[0].clamp(0.0, 1.0);
+      }
+
+      final bool isReal = prob > 0.5;
+      final double confidence = isReal ? prob : (1 - prob);
+
+      await File(imageFile.path).delete();
+
+      if (mounted && !_isNavigating) {
+        setState(() {
+          _hasResult  = true;
+          _isReal     = isReal;
+          _isSpoof    = !isReal;
+          _confidence = confidence;
+        });
+
+        if (isReal && confidence > 0.65) {
+          _onRealDetected();
+        }
+      }
+    } catch (e) {
+      debugPrint('Inference error: $e');
+    } finally {
+      _isProcessing = false;
+    }
   }
 
-  void _finishVerification() {
-    _cardCtrl.reverse().then((_) {
-      if (!mounted) return;
-      setState(() => _isComplete = true);
-      _extCtrl.reset();
-      _extCtrl.forward();
-      _cardCtrl.forward();
-    });
-    Future.delayed(const Duration(milliseconds: 2000), () {
+  void _onRealDetected() {
+    if (_isNavigating) return;
+    _isNavigating = true;
+    _inferenceTimer?.cancel();
+
+    _extCtrl.reset();
+    _extCtrl.forward();
+
+    Future.delayed(const Duration(milliseconds: 900), () {
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
         PageRouteBuilder(
@@ -181,9 +197,9 @@ class _LivenessPageState extends State<LivenessPage>
   void dispose() {
     _pulseCtrl.dispose();
     _extCtrl.dispose();
-    _cardCtrl.dispose();
-    _timer?.cancel();
+    _inferenceTimer?.cancel();
     _camera?.dispose();
+    _module?.destroy();
     super.dispose();
   }
 
@@ -198,7 +214,7 @@ class _LivenessPageState extends State<LivenessPage>
           children: [
             _buildHeader(),
             Expanded(child: _buildCameraSection()),
-            _buildStepCard(),
+            _buildStatusCard(),
             const SizedBox(height: 28),
           ],
         ),
@@ -208,11 +224,6 @@ class _LivenessPageState extends State<LivenessPage>
 
   // ── Header ────────────────────────────────────────────────────────────────
   Widget _buildHeader() {
-    final completed = _stepIndex + (_isComplete ? 1 : 0);
-    final progress = completed / _steps.length;
-    final progressColor =
-        _isComplete ? const Color(0xFF00FF9D) : const Color(0xFF00E5FF);
-
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 10),
       child: Row(
@@ -231,42 +242,12 @@ class _LivenessPageState extends State<LivenessPage>
             ),
           ),
           const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                  'Face Verification',
-                  style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 6),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(3),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 400),
-                    child: LinearProgressIndicator(
-                      value: progress,
-                      backgroundColor: const Color(0xFF1A2640),
-                      valueColor:
-                          AlwaysStoppedAnimation<Color>(progressColor),
-                      minHeight: 3,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 14),
-          Text(
-            '$completed / ${_steps.length}',
+          const Text(
+            'Face Verification',
             style: TextStyle(
-                color: Colors.white.withOpacity(0.4),
-                fontSize: 12,
-                fontWeight: FontWeight.w600),
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w700),
           ),
         ],
       ),
@@ -275,16 +256,19 @@ class _LivenessPageState extends State<LivenessPage>
 
   // ── Camera section ────────────────────────────────────────────────────────
   Widget _buildCameraSection() {
-    const cameraD = 272.0;
+    const cameraD    = 272.0;
     const containerD = 318.0;
 
     return Center(
       child: AnimatedBuilder(
         animation: Listenable.merge([_pulseAnim, _extAnim]),
         builder: (context, _) {
-          final dir = _isComplete
-              ? FaceDirection.complete
-              : _steps[_stepIndex].direction;
+          FaceDirection dir;
+          if (_isNavigating) {
+            dir = FaceDirection.complete;
+          } else {
+            dir = FaceDirection.none;
+          }
 
           return SizedBox(
             width: containerD,
@@ -292,9 +276,8 @@ class _LivenessPageState extends State<LivenessPage>
             child: Stack(
               alignment: Alignment.center,
               children: [
-                // Background ambient glow
-                if (_isComplete ||
-                    _steps[_stepIndex].direction != FaceDirection.none)
+                // Ambient glow when verified
+                if (_isNavigating)
                   Container(
                     width: containerD,
                     height: containerD,
@@ -302,11 +285,8 @@ class _LivenessPageState extends State<LivenessPage>
                       shape: BoxShape.circle,
                       boxShadow: [
                         BoxShadow(
-                          color: (_isComplete
-                                  ? const Color(0xFF00FF9D)
-                                  : const Color(0xFF00E5FF))
-                              .withOpacity(
-                                  0.05 + _pulseAnim.value * 0.04),
+                          color: const Color(0xFF00FF9D)
+                              .withOpacity(0.05 + _pulseAnim.value * 0.05),
                           blurRadius: 60,
                           spreadRadius: 20,
                         ),
@@ -321,24 +301,24 @@ class _LivenessPageState extends State<LivenessPage>
                     activeDirection: dir,
                     pulseValue: _pulseAnim.value,
                     arcExtension: _extAnim.value,
-                    isComplete: _isComplete,
+                    isComplete: _isNavigating,
                   ),
                 ),
 
-                // Camera preview
+                // Camera preview inside circle
                 ClipOval(
                   child: SizedBox(
                     width: cameraD,
                     height: cameraD,
                     child: Stack(
                       children: [
-                        _buildCameraContent(cameraD),
+                        _buildCameraContent(),
                         // Scan line overlay
                         CustomPaint(
                           size: const Size(cameraD, cameraD),
                           painter: ScanLinePainter(_pulseAnim.value),
                         ),
-                        // Subtle dark vignette at edges
+                        // Edge vignette
                         Container(
                           decoration: BoxDecoration(
                             gradient: RadialGradient(
@@ -363,18 +343,16 @@ class _LivenessPageState extends State<LivenessPage>
     );
   }
 
-  Widget _buildCameraContent(double size) {
-    if (_cameraReady && _camera != null) {
-      return CameraPreview(_camera!);
-    }
+  Widget _buildCameraContent() {
+    if (_cameraReady && _camera != null) return CameraPreview(_camera!);
     return Container(
       color: const Color(0xFF0D1220),
       child: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.face_retouching_natural,
-                color: const Color(0xFF1A2640), size: 64),
+            const Icon(Icons.face_retouching_natural,
+                color: Color(0xFF1A2640), size: 64),
             const SizedBox(height: 10),
             Text(
               'Camera initializing…',
@@ -389,115 +367,97 @@ class _LivenessPageState extends State<LivenessPage>
     );
   }
 
-  // ── Step card ─────────────────────────────────────────────────────────────
-  Widget _buildStepCard() {
-    final step = _steps[_stepIndex];
-    final accentColor =
-        _isComplete ? const Color(0xFF00FF9D) : const Color(0xFF00E5FF);
+  // ── Status card ───────────────────────────────────────────────────────────
+  Widget _buildStatusCard() {
+    final bool isInitializing = !_modelLoaded || !_cameraReady;
+
+    Color  accentColor;
+    IconData icon;
+    String title;
+    String subtitle;
+
+    if (_isNavigating) {
+      accentColor = const Color(0xFF00FF9D);
+      icon        = Icons.check_circle_outline_rounded;
+      title       = 'Face Verified!';
+      subtitle    = 'Liveness confirmed — redirecting…';
+    } else if (isInitializing) {
+      accentColor = Colors.white38;
+      icon        = Icons.hourglass_empty_rounded;
+      title       = 'Initializing…';
+      subtitle    = 'Setting up camera and model';
+    } else if (_hasResult && _isSpoof) {
+      accentColor = const Color(0xFFFF4D6D);
+      icon        = Icons.warning_amber_rounded;
+      title       = 'Spoof Detected';
+      subtitle    =
+          'Please use your real face · ${(_confidence * 100).toStringAsFixed(1)}% confident';
+    } else {
+      accentColor = const Color(0xFF00E5FF);
+      icon        = Icons.radar_rounded;
+      title       = _hasResult ? 'Scanning…' : 'Scanning…';
+      subtitle    = _hasResult && _isReal
+          ? 'Real face detected (${(_confidence * 100).toStringAsFixed(1)}%)'
+          : 'Hold your face inside the circle';
+    }
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: FadeTransition(
-        opacity: _cardFade,
-        child: SlideTransition(
-          position: _cardSlide,
-          child: Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: const Color(0xFF111827),
-              borderRadius: BorderRadius.circular(22),
-              border: Border.all(
-                color: accentColor.withOpacity(0.18),
-                width: 1,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: const Color(0xFF111827),
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: accentColor.withOpacity(0.25), width: 1),
+          boxShadow: [
+            BoxShadow(
+              color: accentColor.withOpacity(0.07),
+              blurRadius: 24,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              width: 50,
+              height: 50,
+              decoration: BoxDecoration(
+                color: accentColor.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(15),
               ),
-              boxShadow: [
-                BoxShadow(
-                  color: accentColor.withOpacity(0.06),
-                  blurRadius: 24,
-                  offset: const Offset(0, 8),
-                ),
-              ],
+              child: Icon(icon, color: accentColor, size: 26),
             ),
-            child: Row(
-              children: [
-                // Icon container
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 300),
-                  width: 50,
-                  height: 50,
-                  decoration: BoxDecoration(
-                    color: accentColor.withOpacity(0.10),
-                    borderRadius: BorderRadius.circular(15),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  AnimatedDefaultTextStyle(
+                    duration: const Duration(milliseconds: 300),
+                    style: TextStyle(
+                        color: accentColor,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700),
+                    child: Text(title),
                   ),
-                  child: Icon(
-                    _isComplete
-                        ? Icons.check_circle_outline_rounded
-                        : step.icon,
-                    color: accentColor,
-                    size: 26,
+                  const SizedBox(height: 3),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                        color: Colors.white.withOpacity(0.4),
+                        fontSize: 12.5,
+                        height: 1.35),
                   ),
-                ),
-                const SizedBox(width: 14),
-                // Text
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        _isComplete ? 'All steps complete!' : step.title,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        _isComplete
-                            ? 'Processing verification…'
-                            : step.subtitle,
-                        style: TextStyle(
-                          color: Colors.white.withOpacity(0.4),
-                          fontSize: 12.5,
-                          height: 1.35,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 10),
-                // Progress dots
-                _buildDots(accentColor),
-              ],
+                ],
+              ),
             ),
-          ),
+          ],
         ),
       ),
-    );
-  }
-
-  Widget _buildDots(Color accentColor) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: List.generate(_steps.length, (i) {
-        final done = i < _stepIndex || _isComplete;
-        final current = i == _stepIndex && !_isComplete;
-        return AnimatedContainer(
-          duration: const Duration(milliseconds: 280),
-          margin: const EdgeInsets.only(left: 4),
-          width: current ? 18 : 6,
-          height: 6,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(3),
-            color: done
-                ? const Color(0xFF00FF9D)
-                : current
-                    ? accentColor
-                    : const Color(0xFF1A2640),
-          ),
-        );
-      }),
     );
   }
 }

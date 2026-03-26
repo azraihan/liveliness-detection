@@ -1,5 +1,13 @@
 # 🔬 Face Liveness Detection — Flutter Demo
 
+## 📥 Download APK
+
+[Download APK](apk/app-release.apk)
+
+> To build the APK yourself: `flutter build apk --release`
+
+---
+
 A beautiful, mock face liveness detection UI built in Flutter. Features a dark "deep space biometric" aesthetic with animated glowing arcs, live camera feed, and smooth transitions.
 
 ---
