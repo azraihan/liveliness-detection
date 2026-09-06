@@ -162,13 +162,14 @@ lib/
 
 ## 🧪 Model Experiments
 
-This repository also includes two liveness/deepfake model experiment folders:
+This repository also includes the liveness/deepfake model experiment folders:
 
 | Folder | What it contains |
 |--------|------------------|
 | `mnetv2-anti-spoof-baseline/` | A single-frame MobileNetV2 anti-spoofing baseline with webcam inference, a trained `.pt` checkpoint, memory profiling, and mobile conversion notes. |
 | `spatio-temporal-mnetv3/` | A MobileNetV3 temporal-average-pooling pipeline for Celeb-DF v2, including training, K=24 inference, PyTorch Lite export, and Flutter handover files. |
 | `g2v2former/` | Server-side G2V2Former model — the second stage of the pipeline. Includes notebooks for training, latency benchmarking, and a FastAPI serving endpoint, plus the trained weights (see folder README). |
+| `gd-fas/` | GD-FAS (ICCV 2025, CLIP ViT-B/16) run as an external comparison baseline under the exact same datasets, metrics, and two-experiment protocol as G2V2Former. Includes the offline-bundle prep notebook, the experiments notebook, and the recorded HTER/AUC results. |
 
 ### MobileNetV2 baseline
 
@@ -227,6 +228,26 @@ g2v2former/sample_predictions.png
 ```
 
 Download the trained weights, place them alongside the notebooks (or update the load path inside them), then point the Flutter app's second-stage call at the FastAPI server URL.
+
+### GD-FAS (comparison baseline)
+
+Use this folder to reproduce the GD-FAS numbers we compare G2V2Former against. It is a two-notebook Kaggle workflow: the first notebook (internet on) packs the CLIP checkpoint, the GD-FAS repo, and the two missing pip wheels into an offline bundle; the second notebook (GPU, internet off) attaches that bundle plus the datasets and runs both experiments.
+
+```bash
+cd gd-fas
+# Open the notebooks in this order:
+#   1. gd-fas-prepare-offline-bundle.ipynb -> builds gdfas_offline_bundle.zip (upload as a Kaggle dataset)
+#   2. gd-fas-experiments.ipynb            -> Exp 1 (train LCC-FASD) + Exp 2 (finetune Celeb-DF-v2), HTER/AUC on all sets
+```
+
+Recorded results, charts, and the list of deviations from the official GD-FAS defaults are in:
+
+```text
+gd-fas/README.md
+gd-fas/results/gdfas_experiment_comparison.csv
+gd-fas/results/gdfas_hter_comparison.png
+gd-fas/results/gdfas_auc_comparison.png
+```
 
 ---
 
