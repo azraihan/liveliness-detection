@@ -168,6 +168,7 @@ This repository also includes two liveness/deepfake model experiment folders:
 |--------|------------------|
 | `mnetv2-anti-spoof-baseline/` | A single-frame MobileNetV2 anti-spoofing baseline with webcam inference, a trained `.pt` checkpoint, memory profiling, and mobile conversion notes. |
 | `spatio-temporal-mnetv3/` | A MobileNetV3 temporal-average-pooling pipeline for Celeb-DF v2, including training, K=24 inference, PyTorch Lite export, and Flutter handover files. |
+| `g2v2former/` | Server-side G2V2Former model — the second stage of the pipeline. Includes notebooks for training, latency benchmarking, and a FastAPI serving endpoint, plus the trained weights (see folder README). |
 
 ### MobileNetV2 baseline
 
@@ -205,6 +206,27 @@ spatio-temporal-mnetv3/model_contract.json
 ```
 
 For mobile integration, keep `mobilenetv3_temporal_k24.ptl` and `model_contract.json` together and follow the preprocessing and aggregation rules in `FLUTTER_PTL_HANDOVER.md`.
+
+### G2V2Former (server-side stage)
+
+Use this folder for the second-stage server model. Frames flagged as suspicious by the on-device model are sent here for a more robust deepfake / spoof check.
+
+```bash
+cd g2v2former
+# Open the notebooks in this order:
+#   1. g2v2former-train.ipynb       -> trains the model and saves a checkpoint
+#   2. g2v2former-latency.ipynb     -> benchmarks inference latency
+#   3. g2v2former-server.ipynb      -> serves the model behind a FastAPI endpoint
+```
+
+The folder also includes the trained weights (hosted on Google Drive — see the link in `g2v2former/README.md`) and a qualitative sample:
+
+```text
+g2v2former/README.md
+g2v2former/sample_predictions.png
+```
+
+Download the trained weights, place them alongside the notebooks (or update the load path inside them), then point the Flutter app's second-stage call at the FastAPI server URL.
 
 ---
 
