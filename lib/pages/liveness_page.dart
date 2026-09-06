@@ -5,6 +5,7 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_pytorch_lite/flutter_pytorch_lite.dart';
+import 'package:http/http.dart' as http;
 import '../painters/face_frame_painter.dart';
 import 'success_page.dart';
 
@@ -24,15 +25,22 @@ class _LivenessPageState extends State<LivenessPage>
   bool _isProcessing = false;
   bool _isNavigating = false;
 
-  // Majority voting
+  // Majority voting over a temporal window — one entry per analysed frame.
   static const int _maxSamples = 10;
-  final List<bool> _samples = [];
+  final List<({bool isReal, double confidence})> _samples = [];
+  DateTime? _windowStart;
 
   // Inference state
   bool _hasResult = false;
   bool _isReal = false;
   bool _isSpoof = false;
   double _confidence = 0.0;
+
+  // API second-layer state
+  bool _isCallingApi = false;
+  bool _isFinalFailure = false;
+
+  static const String _apiUrl = 'http://168.144.41.182:8000/api/infer';
 
   Timer? _inferenceTimer;
 
@@ -103,6 +111,11 @@ class _LivenessPageState extends State<LivenessPage>
     }
   }
 
+  /// Wall-clock seconds spanned by the current voting window.
+  double get _elapsedSeconds => _windowStart == null
+      ? 0
+      : DateTime.now().difference(_windowStart!).inMilliseconds / 1000.0;
+
   void _startInference() {
     _inferenceTimer =
         Timer.periodic(const Duration(milliseconds: 500), (_) => _runInference());
@@ -110,6 +123,7 @@ class _LivenessPageState extends State<LivenessPage>
 
   Future<void> _runInference() async {
     if (!_modelLoaded || !_cameraReady || _isProcessing || _isNavigating) return;
+    if (_isCallingApi || _isFinalFailure) return;
     if (_camera == null || !_camera!.value.isInitialized || _module == null) return;
 
     _isProcessing = true;
@@ -158,9 +172,10 @@ class _LivenessPageState extends State<LivenessPage>
       await File(imageFile.path).delete();
 
       if (mounted && !_isNavigating) {
-        _samples.add(isReal);
+        _windowStart ??= DateTime.now();
+        _samples.add((isReal: isReal, confidence: confidence));
 
-        final int realCount  = _samples.where((r) => r).length;
+        final int realCount  = _samples.where((s) => s.isReal).length;
         final int total      = _samples.length;
 
         setState(() {
@@ -175,13 +190,9 @@ class _LivenessPageState extends State<LivenessPage>
           if (majorityReal) {
             _onRealDetected();
           } else {
-            // Reset and try again
-            _samples.clear();
-            setState(() {
-              _isSpoof   = true;
-              _isReal    = false;
-              _hasResult = true;
-            });
+            // Keep the window on screen — it's the evidence that triggered
+            // the server escalation.
+            _onLocalSpoofDetected();
           }
         }
       }
@@ -192,10 +203,74 @@ class _LivenessPageState extends State<LivenessPage>
     }
   }
 
+  void _onLocalSpoofDetected() {
+    if (_isNavigating || _isCallingApi || _isFinalFailure) return;
+    _inferenceTimer?.cancel();
+    setState(() => _isCallingApi = true);
+    _callApiLayer();
+  }
+
+  Future<void> _callApiLayer() async {
+    try {
+      final XFile imageFile = await _camera!.takePicture();
+      final bytes = await File(imageFile.path).readAsBytes();
+      await File(imageFile.path).delete();
+
+      final response = await http.post(
+        Uri.parse(_apiUrl),
+        headers: {'Content-Type': 'image/jpeg'},
+        body: bytes,
+      ).timeout(const Duration(minutes: 2));
+
+      if (!mounted) return;
+
+      debugPrint('API response: ${response.body}');
+
+      if (response.statusCode == 200) {
+        // Response is a JSON array; parse the first element
+        final body = response.body.trim();
+        // Extract is_real field manually to avoid adding dart:convert dependency
+        final isRealMatch = RegExp(r'"is_real"\s*:\s*(true|false)').firstMatch(body);
+        final isReal = isRealMatch?.group(1) == 'true';
+
+        if (isReal) {
+          setState(() => _isCallingApi = false);
+          _onRealDetected();
+        } else {
+          setState(() {
+            _isCallingApi  = false;
+            _isFinalFailure = true;
+            _isSpoof       = true;
+            _hasResult     = true;
+          });
+        }
+      } else {
+        // Treat non-200 as final failure
+        setState(() {
+          _isCallingApi  = false;
+          _isFinalFailure = true;
+          _isSpoof       = true;
+          _hasResult     = true;
+        });
+      }
+    } catch (e) {
+      debugPrint('API error: $e');
+      if (mounted) {
+        setState(() {
+          _isCallingApi  = false;
+          _isFinalFailure = true;
+          _isSpoof       = true;
+          _hasResult     = true;
+        });
+      }
+    }
+  }
+
   void _onRealDetected() {
     if (_isNavigating) return;
     _isNavigating = true;
     _samples.clear();
+    _windowStart = null;
     _inferenceTimer?.cancel();
 
     _extCtrl.reset();
@@ -402,6 +477,16 @@ class _LivenessPageState extends State<LivenessPage>
       icon        = Icons.check_circle_outline_rounded;
       title       = 'Face Verified!';
       subtitle    = 'Liveness confirmed — redirecting…';
+    } else if (_isFinalFailure) {
+      accentColor = const Color(0xFFFF4D6D);
+      icon        = Icons.block_rounded;
+      title       = 'Spoof Detected';
+      subtitle    = 'Liveness could not be confirmed. Please try again later.';
+    } else if (_isCallingApi) {
+      accentColor = const Color(0xFFFFB347);
+      icon        = Icons.cloud_sync_rounded;
+      title       = 'Double-Checking…';
+      subtitle    = 'Running secondary verification via server';
     } else if (isInitializing) {
       accentColor = Colors.white38;
       icon        = Icons.hourglass_empty_rounded;
@@ -416,11 +501,19 @@ class _LivenessPageState extends State<LivenessPage>
     } else {
       accentColor = const Color(0xFF00E5FF);
       icon        = Icons.radar_rounded;
-      title       = _hasResult ? 'Scanning…' : 'Scanning…';
-      subtitle    = _samples.isNotEmpty
-          ? 'Analysing… ${_samples.length}/$_maxSamples samples'
-          : 'Hold your face inside the circle';
+      title       = _samples.isEmpty ? 'Scanning…' : 'Analysing Sequence…';
+      subtitle    = _samples.isEmpty
+          ? 'Hold your face inside the circle'
+          : 'Frame ${_samples.length} of $_maxSamples · ${_elapsedSeconds.toStringAsFixed(1)}s observed';
     }
+
+    // The strip is the evidence for the verdict, so show it while the window
+    // is filling and while the server is adjudicating that same window.
+    final bool showStrip =
+        _samples.isNotEmpty && !_isNavigating && !isInitializing;
+
+    // Motion coaching only helps while we're still collecting frames.
+    final bool showHint = showStrip && !_isCallingApi && !_isFinalFailure;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -439,45 +532,169 @@ class _LivenessPageState extends State<LivenessPage>
             ),
           ],
         ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 300),
+                  width: 50,
+                  height: 50,
+                  decoration: BoxDecoration(
+                    color: accentColor.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(15),
+                  ),
+                  child: Icon(icon, color: accentColor, size: 26),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      AnimatedDefaultTextStyle(
+                        duration: const Duration(milliseconds: 300),
+                        style: TextStyle(
+                            color: accentColor,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700),
+                        child: Text(title),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        subtitle,
+                        style: TextStyle(
+                            color: Colors.white.withOpacity(0.4),
+                            fontSize: 12.5,
+                            height: 1.35),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            if (showHint) _buildMotionHint(accentColor),
+            if (showStrip) _buildTemporalStrip(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── Motion prompt ─────────────────────────────────────────────────────────
+  Widget _buildMotionHint(Color accentColor) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 15),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
+        decoration: BoxDecoration(
+          color: accentColor.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(13),
+          border: Border.all(color: accentColor.withOpacity(0.18)),
+        ),
         child: Row(
           children: [
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 300),
-              width: 50,
-              height: 50,
-              decoration: BoxDecoration(
-                color: accentColor.withOpacity(0.12),
-                borderRadius: BorderRadius.circular(15),
-              ),
-              child: Icon(icon, color: accentColor, size: 26),
-            ),
-            const SizedBox(width: 14),
+            Icon(Icons.gesture_rounded,
+                color: accentColor.withOpacity(0.85), size: 16),
+            const SizedBox(width: 9),
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  AnimatedDefaultTextStyle(
-                    duration: const Duration(milliseconds: 300),
-                    style: TextStyle(
-                        color: accentColor,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700),
-                    child: Text(title),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    subtitle,
-                    style: TextStyle(
-                        color: Colors.white.withOpacity(0.4),
-                        fontSize: 12.5,
-                        height: 1.35),
-                  ),
-                ],
+              child: Text(
+                'Move your face around a bit',
+                style: TextStyle(
+                  color: accentColor.withOpacity(0.9),
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                  height: 1.3,
+                ),
               ),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  // ── Temporal sample strip ─────────────────────────────────────────────────
+  // One bar per analysed frame: height encodes that frame's confidence, colour
+  // its verdict. Unfilled slots show how much of the window is still to come,
+  // so the decision reads as a sequence rather than a single snapshot.
+  Widget _buildTemporalStrip() {
+    const green = Color(0xFF00FF9D);
+    const red   = Color(0xFFFF4D6D);
+    const empty = Color(0xFF1A2640);
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            height: 36,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: List.generate(_maxSamples, (i) {
+                final sample = i < _samples.length ? _samples[i] : null;
+                final bool isNewest = sample != null && i == _samples.length - 1;
+                final Color barColor =
+                    sample == null ? empty : (sample.isReal ? green : red);
+
+                // Confidence runs 0.5–1.0, so rescale it across the track.
+                final double height = sample == null
+                    ? 6
+                    : 11 +
+                        ((sample.confidence - 0.5) / 0.5).clamp(0.0, 1.0) * 25;
+
+                return Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 2.5),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 280),
+                      curve: Curves.easeOutCubic,
+                      height: height,
+                      decoration: BoxDecoration(
+                        color: barColor.withOpacity(sample == null ? 0.35 : 0.9),
+                        borderRadius: BorderRadius.circular(3),
+                        boxShadow: isNewest
+                            ? [
+                                BoxShadow(
+                                    color: barColor.withOpacity(0.55),
+                                    blurRadius: 9)
+                              ]
+                            : null,
+                      ),
+                    ),
+                  ),
+                );
+              }),
+            ),
+          ),
+          const SizedBox(height: 9),
+          Row(
+            children: [
+              Text(
+                'TEMPORAL WINDOW',
+                style: TextStyle(
+                  color: Colors.white.withOpacity(0.30),
+                  fontSize: 9,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.2,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                '${_samples.where((s) => s.isReal).length}/${_samples.length} live',
+                style: TextStyle(
+                  color: Colors.white.withOpacity(0.30),
+                  fontSize: 9,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.2,
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

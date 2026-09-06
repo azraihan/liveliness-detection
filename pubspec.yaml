@@ -12,6 +12,7 @@ dependencies:
   camera: ^0.10.5+9
   cupertino_icons: ^1.0.6
   flutter_pytorch_lite: ^0.1.0+3
+  http: ^1.2.0
 
 dev_dependencies:
   flutter_test:
