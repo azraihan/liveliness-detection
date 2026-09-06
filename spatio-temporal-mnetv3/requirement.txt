@@ -1,0 +1,14 @@
+# Core ML dependencies
+torch>=2.0.0
+torchvision>=0.15.0
+numpy>=1.24.0
+
+# Computer vision and image processing
+opencv-python-headless>=4.9.0
+Pillow>=9.0.0
+
+# Metrics, plotting, and experiment tracking
+scikit-learn>=1.4.0
+matplotlib>=3.7.0
+tensorboard>=2.16.0
+tqdm>=4.66.0

@@ -1,0 +1,11 @@
+experiment,dataset,HTER (%),AUC (%)
+Exp1: train=LCC-FASD,LCC-FASD (test),4.55,99.69
+Exp1: train=LCC-FASD,CelebDF-v2 (test),52.99,50.49
+Exp1: train=LCC-FASD,Asian-Fakes (all),48.33,52.98
+Exp1: train=LCC-FASD,Asian-Fakes (asian),48.4,53.18
+Exp1: train=LCC-FASD,Asian-Fakes (non-asian),47.32,53.54
+Exp2: train=LCC-FASD -> finetune=Celeb-DF-v2,LCC-FASD (test),7.07,99.16
+Exp2: train=LCC-FASD -> finetune=Celeb-DF-v2,CelebDF-v2 (test),41.04,64.35
+Exp2: train=LCC-FASD -> finetune=Celeb-DF-v2,Asian-Fakes (all),44.58,57.94
+Exp2: train=LCC-FASD -> finetune=Celeb-DF-v2,Asian-Fakes (asian),44.59,57.29
+Exp2: train=LCC-FASD -> finetune=Celeb-DF-v2,Asian-Fakes (non-asian),44.57,57.88

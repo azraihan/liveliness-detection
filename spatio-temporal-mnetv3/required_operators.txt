@@ -1,0 +1,15 @@
+aten::_convolution
+aten::adaptive_avg_pool2d
+aten::add_.Tensor
+aten::batch_norm
+aten::flatten.using_ints
+aten::hardsigmoid
+aten::hardswish_
+aten::linear
+aten::mean.dim
+aten::mul.Tensor
+aten::relu
+aten::relu_
+aten::select.int
+aten::slice.Tensor
+aten::stack
