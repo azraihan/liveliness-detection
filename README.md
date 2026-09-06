@@ -160,6 +160,54 @@ lib/
 
 ---
 
+## 🧪 Model Experiments
+
+This repository also includes two liveness/deepfake model experiment folders:
+
+| Folder | What it contains |
+|--------|------------------|
+| `mnetv2-anti-spoof-baseline/` | A single-frame MobileNetV2 anti-spoofing baseline with webcam inference, a trained `.pt` checkpoint, memory profiling, and mobile conversion notes. |
+| `spatio-temporal-mnetv3/` | A MobileNetV3 temporal-average-pooling pipeline for Celeb-DF v2, including training, K=24 inference, PyTorch Lite export, and Flutter handover files. |
+
+### MobileNetV2 baseline
+
+Use this folder when you want the simpler webcam-based baseline:
+
+```bash
+cd mnetv2-anti-spoof-baseline
+pip install -r requirements.txt
+python mobilenetv2-inference.py
+```
+
+For a folder-level file map and step-by-step usage, read:
+
+```text
+mnetv2-anti-spoof-baseline/README.md
+```
+
+### Spatio-temporal MobileNetV3
+
+Use this folder for the temporal Celeb-DF v2 model and the current K=24 mobile artifact:
+
+```bash
+cd spatio-temporal-mnetv3
+pip install -r requirement.txt
+python infer_mobilenetv3_celebdfv2_kaggle.py
+```
+
+The folder also includes:
+
+```text
+spatio-temporal-mnetv3/README.md
+spatio-temporal-mnetv3/FLUTTER_PTL_HANDOVER.md
+spatio-temporal-mnetv3/mobilenetv3_temporal_k24.ptl
+spatio-temporal-mnetv3/model_contract.json
+```
+
+For mobile integration, keep `mobilenetv3_temporal_k24.ptl` and `model_contract.json` together and follow the preprocessing and aggregation rules in `FLUTTER_PTL_HANDOVER.md`.
+
+---
+
 ## 🎨 Design System
 
 | Token | Value | Usage |
