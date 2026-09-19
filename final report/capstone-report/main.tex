@@ -1,0 +1,56 @@
+% BUET CSE 450 Capstone Project Report
+\documentclass[12pt,a4paper,oneside]{report}
+\usepackage{cse-capstone}
+
+\newcommand{\ProjectTitle}{Leveraging Temporal Information for Robust Liveness Verification}
+\newcommand{\Session}{\TBC{Session}}
+\newcommand{\SubmissionDate}{\TBC{Submission month and year}}
+\newcommand{\Supervisors}{\TBC{Supervisor name and designation}\\Department of CSE, BUET}
+
+\hypersetup{
+  pdftitle={\ProjectTitle},
+  pdfauthor={Nafis Nahian; Abrar Zahin Raihan; Aritra Debnath; Tamzeed Mahfuz; Ruwad Naswan},
+  pdfsubject={CSE 450 Capstone Project Report},
+  pdfkeywords={face liveness, deepfake detection, temporal modelling, domain generalisation, specialist routing}
+}
+
+\begin{document}
+
+\pagenumbering{gobble}
+\input{frontmatter/titlepage}
+\pagenumbering{roman}
+\input{frontmatter/declaration}
+\input{frontmatter/acknowledgement}
+\input{frontmatter/abstract}
+\tableofcontents
+\listoffigures
+\listoftables
+
+\clearpage
+\pagenumbering{arabic}
+\input{chapters/problem}
+\input{chapters/research}
+\input{chapters/requirements}
+\input{chapters/design}
+\input{chapters/evaluation}
+\input{chapters/management_impact}
+\input{chapters/conclusion}
+
+\clearpage
+\bibliographystyle{IEEEtran}
+\bibliography{references}
+
+\appendix
+\chapter{Draft Verification Checklist}
+\label{app:checklist}
+The following items must be resolved against primary records before the report is
+submitted: supervisor identity and title; academic session and submission date;
+the team contribution record; actual expenditure; dataset licence statements;
+the MobileNetV3 training--export sequence-length mismatch; G2V2Former checkpoint
+and metric reconciliation; and rerunning the router with the intended five-expert,
+no-original target. All statements concerning an unintegrated server, fusion,
+human review, capture attestation, or injection defence must remain labelled as
+proposed until an end-to-end artefact and evaluation exist.
+
+\end{document}
+

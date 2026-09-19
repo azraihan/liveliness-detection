@@ -1,0 +1,28 @@
+\begin{tikzpicture}[
+  font=\footnotesize,
+  node distance=7mm and 8mm,
+  box/.style={draw=buetblue,rounded corners,fill=softblue,align=center,minimum height=12mm,text width=25mm},
+  impl/.style={box,fill=softgreen},
+  prop/.style={box,fill=softorange},
+  decision/.style={diamond,aspect=2,draw=buetblue,fill=white,align=center,inner sep=1.5pt,text width=18mm},
+  arr/.style={-{Latex[length=2mm]},thick,draw=buetblue}
+]
+\node[prop] (integrity) {Capture integrity\\and quality gate};
+\node[impl,right=of integrity] (mobile) {Layer 1: mobile\\temporal MobileNetV3\\24 frames};
+\node[decision,right=of mobile] (conf) {risk /\\confidence};
+\node[prop,above right=9mm and 16mm of conf] (pass) {Accept or reject\\by calibrated policy};
+\node[prop,below right=9mm and 16mm of conf] (layer2) {Layer 2: stronger\\server analysis};
+\node[prop,right=of layer2] (fusion) {Fusion and\\calibration};
+\node[prop,right=of fusion] (review) {Human review\\for unresolved cases};
+
+\draw[arr] (integrity) -- (mobile);
+\draw[arr] (mobile) -- (conf);
+\draw[arr] (conf) -- node[above,sloped]{clear} (pass);
+\draw[arr] (conf) -- node[below,pos=0.43,align=center]{uncertain/\\high risk} (layer2);
+\draw[arr] (layer2) -- (fusion);
+\draw[arr] (fusion) -- (review);
+
+\node[draw=green!50!black,rounded corners,fit=(mobile),inner sep=2mm,label={[green!40!black]below:integrated prototype}] {};
+\node[draw=orange!80!black,dashed,rounded corners,fit=(integrity)(pass)(layer2)(fusion)(review),inner sep=3mm,
+ label={[orange!70!black]above:target architecture}] {};
+\end{tikzpicture}

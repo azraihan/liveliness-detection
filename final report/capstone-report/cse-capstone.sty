@@ -1,0 +1,81 @@
+% Formatting derived from the supplied BUET CSE 450 capstone template.
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{cse-capstone}[2026/09/20 CSE450 Capstone Report]
+
+\RequirePackage[a4paper,left=25mm,right=25mm,top=25mm,bottom=25mm]{geometry}
+\RequirePackage[T1]{fontenc}
+\RequirePackage[utf8]{inputenc}
+\RequirePackage{newtxtext}
+\RequirePackage{setspace}
+\onehalfspacing
+\RequirePackage{microtype}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{2.5mm}
+\setlength{\emergencystretch}{3em}
+\raggedbottom
+
+\RequirePackage{amsmath,amssymb}
+\RequirePackage{newtxmath}
+
+\RequirePackage{graphicx}
+\graphicspath{{figures/}}
+\RequirePackage{float}
+\RequirePackage{booktabs}
+\RequirePackage{array}
+\RequirePackage{tabularx}
+\RequirePackage{longtable}
+\RequirePackage{multirow}
+\RequirePackage[font=small,labelfont=bf]{caption}
+\RequirePackage{subcaption}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+
+\RequirePackage{enumitem}
+\setlist{itemsep=2pt,topsep=4pt}
+\RequirePackage{needspace}
+\RequirePackage{xcolor}
+\definecolor{buetblue}{HTML}{173B57}
+\definecolor{draftred}{HTML}{9B1C1C}
+\definecolor{softblue}{HTML}{EAF2F8}
+\definecolor{softgreen}{HTML}{EAF7EE}
+\definecolor{softorange}{HTML}{FFF2DD}
+\RequirePackage{listings}
+\lstset{basicstyle=\ttfamily\footnotesize,breaklines=true,frame=single,
+  numbers=left,numberstyle=\tiny\color{gray},keywordstyle=\bfseries,
+  commentstyle=\itshape\color{gray},showstringspaces=false,captionpos=b,
+  xleftmargin=14pt}
+
+\RequirePackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,fit,shapes.geometric,calc}
+\RequirePackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\RequirePackage{pgfgantt}
+
+\RequirePackage{titlesec}
+\titleformat{\chapter}[display]
+  {\vspace*{20pt}\normalfont\Large\bfseries}{\chaptertitlename\ \thechapter}{10pt}{\LARGE}
+\titlespacing*{\chapter}{0pt}{0pt}{24pt}
+\setcounter{secnumdepth}{2}
+\setcounter{tocdepth}{2}
+
+\RequirePackage{fancyhdr}
+\setlength{\headheight}{14pt}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small\slshape\nouppercase{\leftmark}}
+\fancyhead[R]{\small\bfseries\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+\fancypagestyle{plain}{\fancyhf{}\fancyfoot[C]{\small\thepage}\renewcommand{\headrulewidth}{0pt}}
+
+\RequirePackage{cite}
+\RequirePackage[hidelinks]{hyperref}
+\RequirePackage[nameinlink,capitalise,noabbrev]{cleveref}
+
+\newcommand{\TBC}[1]{\textcolor{draftred}{[TO BE CONFIRMED: #1]}}
+\newcommand{\draftnote}[1]{%
+  \par\noindent\colorbox{softorange}{\parbox{0.94\linewidth}{\small\textbf{Drafting note:} #1}}\par}
+\newcommand{\implemented}{\textcolor{green!45!black}{\textbf{Implemented}}}
+\newcommand{\experimental}{\textcolor{blue!65!black}{\textbf{Experimental}}}
+\newcommand{\proposed}{\textcolor{orange!75!black}{\textbf{Proposed}}}
+
+\endinput
+

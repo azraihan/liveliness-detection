@@ -1,0 +1,15 @@
+# Keep MiKTeX/latexmk products out of the report source tree.
+build/
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.lof
+*.log
+*.lot
+*.out
+*.synctex.gz
+*.toc
+*.xdv
+

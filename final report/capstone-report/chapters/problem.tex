@@ -1,0 +1,165 @@
+\chapter{Problem Identification and Formulation}
+\label{ch:problem}
+
+\section{Background and Motivation}
+
+Remote onboarding and account recovery frequently compare a selfie or short face
+video with identity evidence. The comparison is useful only if the media came
+from the person and capture session being verified. An attacker may instead
+present a printed photograph, replay a video on another screen, wear a mask,
+display a manipulated video, or bypass the physical camera and inject forged
+media. ENISA consequently separates camera presentation from injection attacks
+and recommends layered controls spanning the client and server
+\cite{enisa2022,enisa2024}. NIST likewise treats sensor authenticity, protected
+channels, presentation-attack detection (PAD), and forged-media analysis as
+complementary controls rather than substitutes \cite{nist80063a4}.
+
+This problem is especially consequential in financial verification. A false
+acceptance can enable impersonation and monetary loss, while a false rejection
+can exclude a legitimate customer or repeatedly expose their biometric data.
+The system must therefore balance security, usability, latency, resource use,
+privacy, and equitable performance instead of optimising only dataset accuracy.
+
+Deepfake attacks are difficult for several connected reasons:
+
+\begin{itemize}
+  \item manipulation mechanisms are heterogeneous and continue to evolve;
+  \item compression, resizing, recapture, and post-processing can erase the
+        artefacts on which a detector relies;
+  \item a model can learn dataset, identity, background, or codec shortcuts and
+        then fail under a new generator or population;
+  \item a manipulated face can preserve plausible blinking, pose, and motion, so
+        conventional liveness cues alone do not establish authenticity;
+  \item a virtual camera or compromised client can bypass assumptions about a
+        trusted physical capture path; and
+  \item mobile inference restricts model size, memory, energy, and response time.
+\end{itemize}
+
+The attack must consequently be described along more than one axis.
+\Cref{fig:taxonomy} distinguishes the delivery path from the manipulation family.
+The five FaceForensics++-derived experimental fake classes are not five equivalent
+meanings of ``deepfake'': Deepfakes, FaceSwap, and FaceShifter are identity-swap
+approaches, whereas Face2Face and NeuralTextures are reenactment/neural-rendering
+approaches \cite{rossler2019faceforensics,li2020faceshifter}. ``Original'' denotes
+genuine data and is not a manipulation class.
+
+\begin{figure}[H]
+  \centering
+  \input{figures/attack-taxonomy}
+  \caption{Threat taxonomy used in this report. Delivery path and manipulation
+  family are separate: the same generated video may be shown to a camera or
+  injected directly. Items outside the experiment remain relevant threats.}
+  \label{fig:taxonomy}
+\end{figure}
+
+\section{Problem Statement}
+
+The engineering problem is to design and evaluate a practical face-liveness
+screening pipeline for remote financial verification that detects both physical
+presentation attacks and digitally manipulated faces, uses temporal evidence
+where useful, degrades safely under uncertainty, and remains feasible on a
+mobile--server architecture. The work asks four linked questions:
+
+\begin{enumerate}
+  \item Can a lightweight temporal model provide a useful first decision on a
+        mobile device?
+  \item How well do stronger temporal and domain-generalised PAD models transfer
+        from physical-spoof datasets to deepfake datasets?
+  \item Does manipulation-specific expertise improve frame-level deepfake
+        detection relative to one universal detector?
+  \item What security and ethical controls are required before experimental
+        accuracy can become a trustworthy financial decision?
+\end{enumerate}
+
+For a captured clip $V=(x_1,\ldots,x_K)$, the first-layer model produces a fake
+probability $p_1=p(\mathrm{fake}\mid V)$. A target cascade uses two policy
+thresholds $\tau_{\mathrm{pass}}<\tau_{\mathrm{attack}}$: clear low-risk cases
+may pass, clear high-risk cases may be rejected or challenged, and the interval
+between them is escalated. These thresholds are a design requirement; the current
+Flutter prototype applies a single threshold of 0.5.
+
+For the later specialist experiment, let $x$ be a preprocessed face frame,
+$z=\phi(x)$ an embedding, and $\mathcal{E}$ the five manipulation-specific binary
+experts. The intended router is
+
+\begin{align}
+q_e(z) &= P(E^*=e\mid z), \qquad e\in\mathcal{E},\\
+\hat e &= \arg\max_{e\in\mathcal{E}} q_e(z),\\
+\widehat p(\mathrm{fake}\mid x) &= s_{\hat e}(x),
+\end{align}
+
+where $s_e$ is the fake probability from expert $e$. The router does not predict
+``original''; every frame is assigned to a binary specialist. A truthful claim of
+$P(\text{best expert}\mid z)$ additionally requires leakage-safe targets---for
+example, choosing the expert with the lowest out-of-fold loss for each training
+sample under a declared tie rule. If the training target is merely the known
+manipulation label, the correct interpretation is
+$P(\text{manipulation method}\mid z)$, not the best expert. The current notebooks
+use a six-way original-plus-method classifier and an original-route fallback.
+They are therefore reported as a legacy six-way routing result and not as a
+completed implementation of the intended equations.
+
+\section{Complexity of the Problem}
+
+The project qualifies as a complex engineering problem because its requirements
+conflict and its operating conditions are only partially observable. Important
+dimensions are summarised in \Cref{tab:complexity}.
+
+\begin{table}[H]
+\centering
+\caption{Sources of engineering complexity.}
+\label{tab:complexity}
+\begin{tabularx}{\textwidth}{@{}p{32mm}Y Y@{}}
+\toprule
+Dimension & Conflict or uncertainty & Engineering implication \\
+\midrule
+Attack diversity & Prints, replay, reenactment, face swap, recapture, and
+injection expose different signals. & No single benchmark or cue demonstrates
+complete protection. \\
+Domain shift & Dataset, camera, subject, codec, and generator differ from the
+deployment domain. & Group-disjoint and cross-domain evaluation are mandatory. \\
+Edge constraints & Larger temporal models may improve evidence but increase
+latency, memory, energy, and network use. & Use a lightweight local stage and
+selective escalation. \\
+Decision cost & False accepts create fraud risk; false rejects create exclusion
+and support cost. & Calibrate thresholds against operational costs and provide
+retry/appeal paths. \\
+Biometric sensitivity & Face data is difficult to revoke and may reveal identity
+or demographic attributes. & Minimise collection, secure transit and storage,
+and define retention and access controls. \\
+Adversarial evolution & Attackers can adapt after learning detector behaviour. &
+Monitor drift, limit disclosure of exploitable details, and retest continuously. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Project Objectives and Scope}
+
+The project objectives are to:
+
+\begin{enumerate}
+  \item establish a clear physical-presentation, manipulation, and injection
+        threat model for remote face verification;
+  \item build a lightweight temporal first-stage classifier and integrate its
+        exported model into a Flutter capture flow;
+  \item investigate richer temporal evidence through $G^2V^2$former;
+  \item compare temporal modelling with the GD-FAS domain-generalisation method;
+  \item measure within-domain and cross-domain behaviour on public PAD and
+        deepfake datasets;
+  \item compare a universal Xception detector with manipulation specialists and
+        learned routing;
+  \item specify a layered escalation architecture and the controls needed for
+        trustworthy deployment; and
+  \item analyse privacy, fairness, accessibility, accountability, intellectual
+        property, cost, and environmental impact.
+\end{enumerate}
+
+The implemented scope comprises public-data experiments, preprocessing and
+training notebooks, a Flutter/mobile temporal prototype, a separately demonstrated
+$G^2V^2$former API, GD-FAS evaluation, and frame-level Xception routing experiments.
+It does not comprise a production Pathao Pay deployment, a connected multi-model
+backend, capture-device attestation, a reviewer console, calibrated production
+thresholds, or a completed field trial. Audio deepfakes, document forgery, fully
+synthetic identities, and end-to-end identity matching are threat context but not
+separately evaluated model classes.
+

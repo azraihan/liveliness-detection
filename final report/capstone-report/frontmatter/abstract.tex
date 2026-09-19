@@ -1,0 +1,38 @@
+\chapter*{Abstract}
+\addcontentsline{toc}{chapter}{Abstract}
+
+Remote financial identity verification must distinguish genuine users from both
+physical presentation attacks and digitally manipulated or injected face media.
+This project investigates a layered liveness-verification architecture whose
+first stage is a lightweight temporal MobileNetV3 model for mobile inference and
+whose stronger experimental components include G2V2Former temporal reasoning,
+GD-FAS domain-generalised spatial features, Xception deepfake detectors, and a
+learned manipulation-specific routing strategy. The mobile prototype captures a
+short clip, samples 24 frames, performs local inference, and applies a fixed
+decision threshold. Server escalation, score fusion, capture attestation, and
+human review are target-architecture elements rather than completed integrations.
+
+Cross-domain experiments reveal the central difficulty. Under the repository's
+common evaluation protocol, GD-FAS trained on LCC-FASD achieved 4.55\% HTER and
+99.69\% AUC on LCC-FASD but 52.99\% HTER and 50.49\% AUC on Celeb-DF-v2.
+Fine-tuning on Celeb-DF-v2 improved its target-domain result to 41.04\% HTER and
+64.35\% AUC while reducing source-domain performance. G2V2Former showed the same
+generalisation challenge. A later FaceForensics++ experiment compared a universal
+Xception detector with manipulation-specific experts selected by a learned
+router. The current six-way routing artefact improved balanced accuracy from
+76.44\% to 84.51\% and ROC-AUC from 86.32\% to 91.68\% on a group-disjoint,
+in-domain validation split. However, it includes an ``original'' routing class;
+therefore it does not yet implement the intended formulation in which a router
+estimates the most suitable one of five binary specialists from an embedding.
+
+The work contributes an evidence-based analysis of temporal information,
+cross-domain transfer, mobile deployment constraints, and specialist routing. It
+also identifies the safeguards required before financial use: capture-channel
+integrity, subgroup and cross-domain evaluation, privacy protection, calibrated
+thresholds, accessible appeal, and accountable human oversight.
+
+\textbf{Keywords:} face liveness; deepfake detection; temporal modelling; domain
+generalisation; specialist routing; mobile inference.
+
+\clearpage
+

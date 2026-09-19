@@ -1,0 +1,87 @@
+\chapter{Conclusion}
+\label{ch:conclusion}
+
+\section{Conclusion and Future Work}
+
+This capstone investigated liveness verification as a layered engineering problem,
+not as a single binary-classification benchmark. The implemented work spans a
+lightweight temporal MobileNetV3 mobile path, explicit temporal modelling with
+$G^2V^2$former, domain-generalised spatial analysis with GD-FAS, public-data
+preparation and transfer experiments, a separate server prototype, and later
+manipulation-specific Xception routing. Together these components reveal both the
+promise and the current limits of robust remote face verification.
+
+The objectives were met unevenly but informatively. A 24-frame local inference
+flow is integrated in Flutter, although its checkpoint provenance and device
+performance need a final audit. $G^2V^2$former and GD-FAS were evaluated across
+physical-PAD and deepfake domains. Their results show that excellent source-domain
+performance can collapse under a change in attack family, and that target-domain
+fine-tuning improves some results without solving unseen-domain generalisation.
+The later FF++ experiment shows that matched specialists and learned routing can
+improve an in-domain universal Xception baseline: the current CNN-routed artefact
+raises balanced accuracy from 76.44\% to 84.51\% and ROC-AUC from 86.32\% to
+91.68\%. That finding is promising but narrow, because the saved router includes
+an original class and has not been tested against unseen generators, injection,
+or deployment populations.
+
+The strongest project conclusion is therefore methodological. Physical
+presentation attacks, digital manipulation, and capture-channel injection require
+different but coordinated evidence. Temporal reasoning can contribute, domain
+generalisation must be measured rather than assumed, and manipulation specialists
+may help when their routing targets and evaluation are leakage-safe. None of
+these replaces genuine-sensor assurance, protected transport, calibrated policy,
+privacy protection, subgroup evaluation, or accountable recourse.
+
+The next work should proceed in the following order:
+
+\begin{enumerate}
+  \item freeze an experiment manifest and reconcile the MobileNetV3 sequence
+        length/checkpoint and $G^2V^2$former metric discrepancies;
+  \item rebuild the router as a five-expert selector with no original class,
+        using out-of-fold expert predictions if the target is ``best expert'';
+  \item compare method-label routing, true best-expert routing, oracle routing,
+        top-$k$/soft routing, and a stronger universal or multi-task baseline;
+  \item evaluate all deepfake systems at video level on unseen generators,
+        additional compression/recapture, and independent external datasets;
+  \item calibrate scores and produce reliability, threshold-cost, and escalation-
+        coverage curves rather than adopting a universal 0.5 threshold;
+  \item connect the mobile and server components through an authenticated,
+        versioned contract and implement failure-safe offline/network behaviour;
+  \item add genuine-camera confidence, replay protection, device integrity, and
+        injection red-team scenarios rather than relying on media analysis alone;
+  \item conduct representative device, demographic, accessibility, privacy, and
+        reviewer studies with explicit stop criteria and appeal measurement; and
+  \item evaluate latency, memory, bandwidth, energy, serving/review cost, licence
+        compliance, monitoring, rollback, and secure deletion in a governed pilot.
+\end{enumerate}
+
+A human-review path should be implemented only with trained reviewers, bounded
+evidence access, reason codes, second-review rules, workload testing, and user
+appeal. It should not be described as a generic cure for model uncertainty.
+
+\section{Continuous Engagement and Self-directed Learning}
+
+The project required continuous learning across research and engineering
+boundaries. The team moved from an initial mobile/server concept to video
+transformers and landmark motion, then to domain-generalisation methods, mobile
+model export, API prototyping, Xception specialists, and routing ablations. Reading
+primary papers was necessary but insufficient: implementations had to be adapted,
+dataset structures reconciled, numerical issues debugged, checkpoints interpreted,
+and results compared under common metrics.
+
+Negative transfer results were particularly valuable. They changed the project
+from a search for one high score into an investigation of attack taxonomy,
+dataset shift, and evidence boundaries. The injection threat similarly expanded
+the design beyond classifier accuracy to capture provenance and channel security.
+The routing discrepancy reinforced a further lesson: a mathematically attractive
+claim is valid only when labels, data splits, code paths, and evaluation actually
+implement it.
+
+Professional development should continue through reproducible experiment
+packaging, biometric security and privacy study, mobile profiling, secure
+deployment, calibration, human-factors evaluation, and responsible disclosure.
+Future engagement with a financial partner should begin with jointly defined
+threats, lawful and consented data governance, operational error costs, and pilot
+stop conditions. These practices are as important to trustworthy liveness
+verification as further model optimisation.
+

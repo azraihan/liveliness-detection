@@ -1,0 +1,146 @@
+\chapter{Requirements Analysis}
+\label{ch:requirements}
+
+\section{Project Objectives and Constraints}
+
+The requirements are expressed at system level so that a model metric is not
+mistaken for a complete security property. \Cref{tab:reqs} records the evidence
+currently available. ``Partial'' means that an artefact exists but the full
+requirement has not been demonstrated.
+
+{\small
+\begin{longtable}{@{}p{13mm}p{66mm}p{25mm}p{41mm}@{}}
+\caption{Requirement and evidence matrix.}\label{tab:reqs}\\
+\toprule
+ID & Requirement & Status & Current evidence or gap \\
+\midrule
+\endfirsthead
+\toprule
+ID & Requirement & Status & Current evidence or gap \\
+\midrule
+\endhead
+FR-01 & Capture a short facial video and validate basic media quality before a
+decision. & Partial & Flutter clip capture exists; a production quality gate is
+not established. \\
+FR-02 & Run a lightweight temporal first-stage model locally without sending all
+media to a server. & \implemented & MobileNetV3 PyTorch Lite model and Flutter
+inference flow use a 24-frame contract. \\
+FR-03 & Produce an interpretable risk score and decision state rather than only a
+class label. & Partial & A probability and fixed 0.5 decision are exposed; score
+calibration and policy bands are absent. \\
+FR-04 & Escalate uncertain or policy-defined high-risk sessions to stronger
+analysis. & \proposed & Candidate server models exist independently; routing is
+not integrated into the application. \\
+FR-05 & Detect both physical presentation and digital manipulation attacks. &
+Partial & Both families are studied, but no unified operational test set exists. \\
+FR-06 & Detect camera bypass or digitally injected media. & \proposed & Threat is
+documented; sensor attestation/IAD is not implemented. \\
+FR-07 & Route a frame to one of five manipulation specialists using embedding
+evidence. & Partial & Six-way legacy router exists; intended no-original router
+requires revised labels and rerun. \\
+FR-08 & Send unresolved cases to accountable human review with reason codes and
+appeal. & \proposed & Workflow and interface are not implemented or evaluated. \\
+NFR-01 & Preserve subject/video-group separation in evaluation and prevent
+training leakage. & Partial & FF++ routing split is group-disjoint; every dataset
+protocol still requires a documented audit. \\
+NFR-02 & Measure FAR, FRR, HTER, AUC, calibration, and subgroup behaviour under
+deployment-like conditions. & Partial & HTER/AUC and routing metrics exist;
+calibration and demographic analysis are absent. \\
+NFR-03 & Protect biometric data in transit, at rest, and throughout retention and
+deletion. & \proposed & Required control; no production data plane exists. \\
+NFR-04 & Bound latency, memory, battery, bandwidth, and server cost. & Partial &
+Mobile integration and a small G2V2 latency pilot exist; full device profiling is
+absent. \\
+NFR-05 & Log model/version/decision metadata without retaining unnecessary raw
+biometrics. & \proposed & Audit schema and retention schedule are not implemented. \\
+NFR-06 & Remain usable under poor capture, low bandwidth, accessibility needs,
+and legitimate appearance variation. & \proposed & Needs user and field testing. \\
+\bottomrule
+\end{longtable}
+}
+
+Key constraints are the lack of private deployment data, limited GPU access,
+heterogeneous dataset licences and annotations, mobile compute limits, and the
+changing attack landscape. The most important safety constraint is epistemic: a
+score produced on a public benchmark cannot be represented as fraud probability
+for a real applicant without deployment-domain validation and calibration.
+
+\section{Regulatory Requirements and Standards}
+
+\begin{table}[H]
+\centering
+\caption{Standards and guidance relevant to the target system.}
+\label{tab:standards}
+\begin{tabularx}{\textwidth}{@{}p{33mm}Y Y@{}}
+\toprule
+Source & Relevance & Correct use in this report \\
+\midrule
+ISO/IEC 30107-3:2023 \cite{iso30107} & PAD testing and reporting, including
+attack-presentation types. & Evaluation reference; no certification or
+conformance is claimed. Injection outside the capture device is out of scope. \\
+NIST SP 800-63A-4 \cite{nist80063a4} & Remote proofing, PAD, genuine-sensor
+confidence, protected channels, injection and forged-media controls. & Security
+design guidance; it is not presented as binding Bangladeshi law. \\
+ENISA remote-ID reports \cite{enisa2022,enisa2024} & Presentation/injection threat
+models and layered countermeasures. & Threat and architecture guidance, not a
+product certification. \\
+ACM/IEEE ethical codes \cite{acmcode,ieeecode} & Avoid harm and discrimination;
+respect privacy, honesty, competence, and accountability. & Basis for professional
+responsibility and reporting limitations. \\
+Bangladesh legal and financial requirements & Biometric processing, cyber
+security, consumer rights, financial records, and appeal. & Must be reviewed with
+qualified legal/compliance personnel before deployment; no legal conclusion is
+made in this draft. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The design should implement purpose limitation, data minimisation, informed and
+accessible notice, least-privilege access, encryption, deletion enforcement,
+incident response, and auditable override/appeal. These controls cannot be added
+only at the end because model training itself processes sensitive face media.
+
+\section{Formulation of Solutions}
+
+Four solution patterns were considered. A mobile-only model offers low latency
+and privacy but limited capacity and visibility into injection. A server-only
+model permits stronger analysis but increases network dependence, data transfer,
+cost, and central privacy risk. Active challenges add session-specific evidence
+but create friction and can exclude some users. A risk-based cascade combines a
+lightweight local path with selective escalation and capture controls.
+
+\begin{table}[H]
+\centering
+\small
+\setlength{\tabcolsep}{4pt}
+\caption{Qualitative design decision matrix (5 is favourable). Scores are design
+judgements and must be validated by field evidence.}
+\label{tab:decision}
+\begin{tabular}{@{}lccccc@{}}
+\toprule
+Alternative & Security breadth & Mobile latency & Privacy & Accessibility & Cost \\
+\midrule
+Mobile-only passive model & 2 & 5 & 4 & 4 & 5 \\
+Server-only strong model & 3 & 2 & 2 & 3 & 2 \\
+Mandatory active challenge & 4 & 3 & 3 & 2 & 3 \\
+Risk-based layered cascade & 5 & 4 & 4 & 4 & 3 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The selected target is the layered cascade in \Cref{fig:pipeline}. It keeps the
+integrated mobile temporal model as the first analytical layer, proposes capture
+integrity and quality checks before it, and escalates only according to calibrated
+policy. Candidate second-layer evidence includes $G^2V^2$former, GD-FAS, a
+universal Xception model, or the specialist router. Their outputs are not
+interchangeable: they should be calibrated, tested for complementary error, and
+fused only after a common protocol. Human review is reserved for unresolved cases
+and is a governed fallback, not proof that automation is safe.
+
+\begin{figure}[H]
+  \centering
+  \resizebox{\textwidth}{!}{\input{figures/pipeline}}
+  \caption{Layered system boundary. Green identifies the integrated prototype;
+  orange identifies target-design elements that are not yet end-to-end.}
+  \label{fig:pipeline}
+\end{figure}
