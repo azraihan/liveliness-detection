@@ -83,3 +83,6 @@ android/captures/
 !**/ios/**/default.pbxuser
 !**/ios/**/default.perspectivev3
 apk/
+
+# Local BUET capstone report template reference
+BUET_CSE_Capstone_Project_Template/
