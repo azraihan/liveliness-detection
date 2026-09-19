@@ -6,7 +6,7 @@
 
 **Leveraging Temporal Information for Robust Liveness Verification**
 
-This is the current title of `Temporal_Deepfake_Detection_for_Secure_Liveness_Verification.pdf` and should remain the working title for now. It reflects the broader project better than a title centered on DeepFake-MoE.
+This is the current title of `Temporal_Deepfake_Detection_for_Secure_Liveness_Verification.pdf` and should remain the working title for now. It reflects the broader project better than a title centered on the later specialist-routing experiment.
 
 Use **liveness**, not *liveliness*, throughout the report. The repository name may remain unchanged, but the technical term in the report should be consistent.
 
@@ -18,7 +18,7 @@ The report should tell one coherent engineering story:
 2. The initial engineering response was a layered mobile--server--review architecture: a lightweight temporal MobileNetV3 first stage produces an on-device score; samples that are uncertain or policy-defined as high risk may be escalated to stronger server-side analysis; unresolved cases may eventually enter a human-review path. Only the local Flutter stage is integrated today, so server routing and human review must remain clearly labeled as target design.
 3. The research then concentrated on temporal reasoning through G2V2Former and on domain generalization through GD-FAS, using LCC-FASD, Celeb-DF-v2, and Asian-Fakes to study transfer across attack families and populations.
 4. Those experiments showed that strong presentation-attack performance does not automatically transfer to digitally generated deepfakes, and that direct deepfake fine-tuning improves one target domain while introducing retention and generalization trade-offs.
-5. DeepFake-MoE is a later, promising experiment within this broader investigation. Its routed experts outperform a universal Xception on an in-domain, group-disjoint FF++ validation split, but it should be presented as one important result—not as the sole focus or final definition of the project.
+5. Embedding-conditioned specialist routing is a later, promising experiment within this broader investigation. The current repository's routed specialists outperform a universal Xception on an in-domain, group-disjoint FF++ validation split, but the saved implementation uses a six-way method/original classifier and must be revised and rerun before it can support the intended five-expert meta-routing formulation. This remains one important result—not the sole focus or final definition of the project.
 6. The overall contribution is the combined engineering evidence: temporal modeling, domain-shift analysis, domain-generalized comparison, dataset preparation, mobile/server prototyping, and manipulation-specific routing, together with a candid account of what remains unsafe or unproven for deployment.
 
 The report must clearly distinguish:
@@ -39,7 +39,7 @@ The report should follow the actual progression visible in the submissions and r
 5. **Temporal research phase:** MobileNetV3 temporal averaging and G2V2Former visual--landmark modeling, followed by LCC-FASD/Celeb-DF-v2 transfer analysis and numerical-stability fixes.
 6. **Domain-generalization phase:** GD-FAS under the same two-experiment protocol, plus Asian-Fakes evaluation and SBI/data-preparation work.
 7. **Integration phase:** PyTorch Lite K=24 model contract, Flutter capture/inference flow, and a separately demonstrated G2V2Former FastAPI endpoint.
-8. **Later specialist-routing phase:** FF++ Xception experts, universal baseline, CNN router, and XGBoost-head ablation.
+8. **Later specialist-routing phase:** FF++ Xception specialists, universal baseline, CNN router, and XGBoost-head ablation.
 
 Pathao provided the project problem and early context, but the report must state that no private Pathao dataset, grant, or sustained technical collaboration was received. Consequently, the experimental work uses public datasets and independently developed/adapted research implementations.
 
@@ -53,6 +53,14 @@ Use sources in this priority order:
 4. External papers, standards, regulations, and market sources, cited directly from authoritative publications.
 
 Do not convert an earlier plan or target into an achieved result. In particular, the report must not claim that the full three-tier system, human-review console, NID matching, continuous-learning infrastructure, or Pathao Pay production deployment has been completed.
+
+### Source assessment for the newly supplied threat material
+
+- The supplied LinkedIn short link resolves to Aditya Krishna's post, **“Liveness detection fails due to synthetic video attacks not camera access.”** Its valuable design observation is that a digitally injected/virtual-camera stream can bypass the physical camera and present apparently clean media to the model. Use the post as practitioner motivation, not as the sole authority for its percentages.
+- Verify the post's quantitative claims against the original [iProov 2025 Threat Intelligence release](https://www.iproov.com/press/annual-identity-verification-threat-intelligence-report), which reports a 2,665% increase in native virtual-camera attacks and a 300% increase in face-swap attacks. Identify the population, time window, and vendor-data limitation whenever using those figures.
+- The supplied [ARSA fintech article](https://arsa.technology/blogs/how-to-prevent-deepfake-fraud-with-face-liveness-detection-in-fintech-7li2h4/) is a commercial/vendor source. It is useful for framing passive liveness, active challenge--response, layered controls, and onboarding-friction trade-offs, but its product, speed, pricing, performance, and compliance statements are not independent evidence and should not be used as achieved properties of this project.
+- Use [NIST SP 800-63A-4](https://pages.nist.gov/800-63-4/sp800-63a.html) and ENISA's remote-identity-proofing reports as the primary security sources. NIST explicitly treats injection as inserting forged media between capture and comparison and calls for genuine-sensor confidence, protected channels, manipulated-media analysis, and documented human review. ENISA distinguishes camera presentation from direct injection and reports that deepfake presentation and injection were among the hardest biometric attacks for surveyed stakeholders to mitigate.
+- Use the original FaceForensics++ and FaceShifter papers/repositories for manipulation definitions, and primary cross-dataset research for the unseen-generator/generalization problem. Do not rely on vendor blogs to define the experimental methods.
 
 ## 3. Exact template and formatting requirements
 
@@ -91,13 +99,13 @@ Keep the template's accountability language. Add a concise disclosure of any gen
 
 ### Acknowledgement
 
-Give special and prominent thanks to the supervisor for sustained guidance and explicitly acknowledge that the specialist-routing/DeepFake-MoE idea originated from the supervisor's suggestion. Thank Pathao Pay/Pathao Ltd. for proposing/entrusting the team with the project problem and for the early project context, without implying continued technical participation after the initial weeks.
+Give special and prominent thanks to the supervisor for sustained guidance and explicitly acknowledge that the embedding-conditioned specialist-routing idea originated from the supervisor's suggestion. Thank Pathao Pay/Pathao Ltd. for proposing/entrusting the team with the project problem and for the early project context, without implying continued technical participation after the initial weeks.
 
 Do not claim that Pathao or any other organization supplied datasets, compute grants, research funding, or sustained implementation support. Public dataset creators, paper authors, pretrained-model providers, open-source projects, and computing platforms should be cited or attributed in the methodology, references, and intellectual-property inventory; they should not be described as personal project sponsors unless assistance was actually received.
 
 Provisional wording:
 
-> We express our sincere gratitude to our supervisor, [Name and designation], for the guidance, critical feedback, and encouragement provided throughout this project. We are especially grateful for the supervisor's suggestion to investigate routing inputs to manipulation-specific deepfake-detection experts, which led to the DeepFake-MoE experiment reported in this work. We also thank Pathao Pay for entrusting us with the original secure-liveness-verification problem and for the context provided during the initial phase of the project.
+> We express our sincere gratitude to our supervisor, [Name and designation], for the guidance, critical feedback, and encouragement provided throughout this project. We are especially grateful for the supervisor's suggestion to investigate embedding-conditioned routing to manipulation-specific deepfake-detection specialists, which led to the specialist-routing experiment reported in this work. We also thank Pathao Pay for entrusting us with the original secure-liveness-verification problem and for the context provided during the initial phase of the project.
 
 Keep this concise. Do not add statements about dataset provision, grants, infrastructure, or continued Pathao collaboration.
 
@@ -108,8 +116,8 @@ Write this last. It should contain, within one page:
 - Threat and engineering problem.
 - Layered project approach: lightweight/mobile inference, temporal visual--landmark modeling, domain-generalized comparison, and later specialist routing.
 - G2V2Former and GD-FAS findings showing strong in-domain PAD performance but weak physical-to-digital transfer, followed by partial improvement after Celeb-DF-v2 fine-tuning.
-- DeepFake-MoE as an additional result: universal balanced accuracy 76.44% and ROC-AUC 86.32% versus routed-ensemble 84.51% and 91.68% on the group-disjoint FF++ validation split.
-- Main limitations: dataset/domain dependence, incomplete fairness evidence, no production integration, and missing cross-dataset MoE validation.
+- The current specialist-routing result as an additional experiment: universal balanced accuracy 76.44% and ROC-AUC 86.32% versus routed-ensemble 84.51% and 91.68% on the group-disjoint FF++ validation split. These figures belong to the current six-way router artifact; replace them if the intended five-expert meta-router is rerun.
+- Main limitations: dataset/domain dependence, incomplete fairness evidence, no production integration, and missing cross-dataset specialist-routing validation.
 - Practical outcome: a research prototype and mobile/server integration groundwork, not a production-ready security product.
 
 Suggested keywords: **liveness verification, face anti-spoofing, deepfake detection, temporal modeling, domain generalization, biometric security**.
@@ -128,11 +136,48 @@ Cover:
 - A precise taxonomy separating PAD from deepfake detection.
 - The project's evolution from broad Pathao Pay system design through mobile, temporal, graph-guided, and domain-generalized experiments, followed by specialist routing as a later branch.
 
+Add a focused subsection titled **Why Deepfake Attacks Are Difficult to Handle**. It should connect the threat research directly to the system design:
+
+- **Heterogeneous manipulations:** identity swaps, expression reenactment, localized neural rendering, fully synthetic identities, and injected streams leave different—and sometimes conflicting—artifacts. A universal detector can overfit the dominant method, while a specialist can fail outside its own manipulation family.
+- **Open-set evolution:** new generators and post-processing pipelines appear after training. Strong in-dataset performance therefore does not imply detection of unseen generators, tools, or attack workflows.
+- **Shortcut learning and domain shift:** detectors may learn dataset, codec, camera, resolution, demographic, background, or preprocessing correlations instead of manipulation-invariant evidence. The project's LCC-FASD-to-Celeb-DF-v2 and Asian-Fakes results are direct evidence of this difficulty.
+- **Artifact destruction:** resizing, social-media recompression, blur, denoising, frame interpolation, and camera recapture can weaken pixel-level traces. Conversely, a detector may mistake ordinary compression or device noise for fake evidence.
+- **Plausible liveness cues:** modern synthetic or reenacted video can contain blinking, speech, head motion, and temporally coherent expressions, so basic motion checks or a fixed challenge do not necessarily prove genuine presence.
+- **Capture-channel compromise:** a virtual camera, emulator, hooked API, or injected stream can bypass the physical sensor. This is a provenance/integrity problem as well as a classification problem; a better face classifier alone cannot authenticate a poisoned input path.
+- **Real-time and mobile constraints:** temporal, landmark, frequency, and multi-model analysis may improve coverage but increases latency, memory, energy, bandwidth, and privacy exposure.
+- **High-stakes operating trade-offs:** a permissive threshold increases fraud risk, while an aggressive threshold can exclude legitimate users. Attackers can also adapt through repeated probing, so thresholds and models require monitoring and controlled updates.
+- **Human review is not a complete defense:** highly realistic or injected media can deceive reviewers too. Review must be supported by capture provenance, model evidence, transaction context, and an appeal process rather than unaided visual inspection.
+
+The key conclusion should be: **deepfake resistance requires both media analysis and capture-channel assurance**. Connect the layered architecture to camera/session integrity, device or sensor attestation where feasible, authenticated transport, active/passive liveness, temporal and spatial detection, risk-based escalation, and accountable review. Clearly label these controls as requirements or future design where they are not implemented.
+
 Evidence:
 
 - Week 3 proposal and Week 5 presentation for original motivation.
 - Latest temporal report for the physical-versus-digital attack distinction.
 - Current repository for the implemented scope.
+- NIST SP 800-63A-4 and ENISA remote-identity-proofing guidance for injection, genuine-sensor assurance, and layered countermeasures.
+- Original FaceForensics++/FaceShifter publications and current cross-dataset research for manipulation diversity and generalization limits.
+- The supplied LinkedIn and ARSA articles only as clearly identified practitioner/vendor context, with quantitative claims traced to their original sources.
+
+### 1.1.1 Attack and Manipulation Taxonomy
+
+Include one taxonomy figure and one mapping table with three separate axes:
+
+1. **Delivery path:** physical presentation to a camera; deepfake displayed/recaptured through a camera; or direct digital injection/virtual camera that bypasses the genuine sensor.
+2. **Manipulation goal:** identity replacement/face swap; expression or pose reenactment; localized neural rendering; fully synthetic identity; or multimodal/document manipulation.
+3. **Evidence used by this project:** spatial texture/artifacts, domain-generalized features, temporal frame evidence, facial-landmark motion, and manipulation-specific specialist evidence.
+
+State exactly which digital manipulations were evaluated in the FF++ routing experiment:
+
+| FF++ method | Manipulation family | What changes | Role in this project |
+| --- | --- | --- | --- |
+| Deepfakes | Learning-based identity swap | Source identity is synthesized onto a target performance | One binary Xception specialist and one routing class/target in the current artifact |
+| FaceSwap | Graphics-based identity swap | A source face is geometrically transferred and blended into a target | One binary specialist and routing target |
+| FaceShifter | Learned, high-fidelity, occlusion-aware identity swap | Identity is replaced while target attributes and occlusions are handled by a two-stage method | One binary specialist and routing target |
+| Face2Face | Graphics-based facial reenactment | Source expressions are transferred to the target while retaining target identity | One binary specialist and routing target |
+| NeuralTextures | Learned neural rendering/reenactment | A learned neural texture modifies facial appearance, particularly expression-related regions | One binary specialist and routing target |
+
+`original` is the genuine/reference class in FF++ and **is not a deepfake type**. Fully synthetic faces, lip-sync-only attacks, audio deepfakes, document deepfakes, diffusion-generated identities, and live virtual-camera injection are important threats but were not separate specialist classes in the reported FF++ experiment. Do not imply experimental coverage of them.
 
 ### 1.2 Problem Statement
 
@@ -140,7 +185,24 @@ Formulate two nested problems.
 
 **System-level problem:** Given a selfie or short facial video from a verification session, produce a calibrated risk score and PASS/FAIL/REVIEW decision while limiting attack acceptance, legitimate-user rejection, latency, resource use, and privacy exposure.
 
-**Final MoE research problem:** Given a single preprocessed facial frame `x`, estimate `P(fake | x)` when the fake may originate from one of five manipulation methods. A router predicts one of `{original, Deepfakes, Face2Face, FaceShifter, FaceSwap, NeuralTextures}`. If a fake route is selected, the corresponding binary specialist supplies the fake probability; if `original` is selected, `1 - P(original)` from the router is used.
+**Later specialist-routing subproblem (intended final formulation):** Given a single preprocessed facial frame `x`, select the most suitable one of five binary manipulation specialists and use that specialist to estimate `P(fake | x)`. The meta-router is an expert selector, not the real/fake detector and not an `original` classifier.
+
+Define it mathematically:
+
+```text
+z = phi(x)                                  embedding for the current frame
+q_e(z) = P(E* = e | z),  e in E             router distribution over five experts
+E = {Deepfakes, Face2Face, FaceShifter,
+     FaceSwap, NeuralTextures}
+e_hat = argmax_e q_e(z)                      hard expert selection
+p_hat(fake | x) = s_e_hat(x)                 selected binary expert's fake probability
+```
+
+Here `phi` is the router feature extractor, `E*` is the best-expert target, and `s_e` is a binary real-versus-method specialist. Every input—including a genuine frame—is transferred to one of the five specialists; there is no `original` route and no `1 - P(original)` fallback. This should be called an **embedding-conditioned meta-routed specialist ensemble** or **hard specialist-routing model**, not simply “MoE.” The repository directory may remain `DeepFake-MoE/` as a historical path.
+
+The report must define how `E*` is obtained. To claim `P(best expert | embedding)`, generate leakage-safe/out-of-fold predictions from all five specialists and label each routing example with the expert having the lowest binary loss or highest correct-class likelihood, with a documented tie policy. If fake-method identity is used as the routing label instead, the honest formulation is `P(manipulation method | embedding)` and “matched manipulation specialist” is only a proxy for “best expert.” Real frames are especially important: without an `original` route, they still require a valid best-expert target rather than being omitted without justification.
+
+**Current-code discrepancy:** `DeepFake-MoE/capstone-xception.ipynb` and `xception-xgb.ipynb` currently define six router classes—`original` plus the five manipulation methods—and use `1 - P(original)` when that route wins. The reported routed metrics and 81.12% router accuracy belong to that six-way implementation. They cannot be relabeled as results of the five-expert selector. Revise the notebooks, refit both CNN and XGBoost router heads, and rerun the ensemble evaluation before presenting the intended formulation as implemented.
 
 Define the optimization/evaluation quantities: balanced accuracy, ROC-AUC, average precision, real accuracy, fake accuracy, FAR/FRR/HTER where available, latency, and model footprint.
 
@@ -165,11 +227,11 @@ Use numbered, verifiable objectives that Chapter 5 can evaluate:
 3. Investigate explicit temporal and facial-landmark modeling through a G2V2Former-inspired visual--graph architecture.
 4. Measure the physical-PAD-to-deepfake domain gap and compare G2V2Former with the domain-generalized GD-FAS baseline under a common protocol.
 5. Prepare leakage-aware public-data pipelines, including LCC-FASD, Celeb-DF-v2, Asian-Fakes/SBI, and FF++ experiments.
-6. Investigate whether manipulation-specific Xception experts and learned routing improve over a universal deepfake classifier.
+6. Investigate whether manipulation-specific Xception specialists and embedding-conditioned best-expert routing improve over a universal deepfake classifier.
 7. Prototype mobile temporal inference and an experimental server-side inference path.
 8. Analyze privacy, fairness, user autonomy, accountability, security, deployment, and sustainability constraints throughout the design and evaluation.
 
-Scope exclusions must be explicit: production Pathao integration, certification, NID database integration, a completed reviewer dashboard, comprehensive demographic validation, and defense against every generator/attack type.
+Scope exclusions must be explicit: production Pathao integration, certification, NID database integration, a completed reviewer dashboard, comprehensive demographic validation, and defense against every generator/attack type. The current prototype also does not implement virtual-camera detection, device/sensor attestation, emulator/root detection, cryptographic capture provenance, or multimodal document/voice-deepfake defense.
 
 ## Chapter 2 — Preliminary Research
 
@@ -182,7 +244,7 @@ Organize by ideas, not by paper:
 - Temporal aggregation and lightweight MobileNet-based video PAD.
 - Facial-landmark and graph-guided temporal modeling (G2V2Former).
 - Domain generalization and vision-language approaches (GD-FAS).
-- Mixture-of-experts, hard routing, specialist models, and routing failure.
+- Embedding-conditioned meta-routing, hard specialist selection, oracle/best-expert targets, and routing failure. Discuss classical mixture-of-experts only as related literature, not as the chosen name for this implementation.
 - Calibration and security-oriented biometric metrics.
 
 The synthesis should establish several connected gaps:
@@ -191,13 +253,14 @@ The synthesis should establish several connected gaps:
 - Presentation-attack cues do not automatically transfer to digital deepfakes.
 - Domain-generalized methods can remain highly source-domain dependent and require direct target-domain exposure.
 - Strong aggregate metrics do not establish fairness, calibration, or safety for financial decisions.
-- Universal deepfake classifiers must absorb heterogeneous manipulation distributions, whereas specialists can be strong on their own method but fail across methods; routing is one later response to this issue.
+- Universal deepfake classifiers must absorb heterogeneous manipulation distributions, whereas specialists can be strong on their own method but fail across methods; embedding-conditioned specialist selection is one later response to this issue.
 
 ### 2.2 Existing Solutions and Technologies
 
 Discuss:
 
 - Active versus passive liveness.
+- Presentation attacks versus digital injection, including why sensor/session provenance cannot be replaced by image classification accuracy.
 - Commercial verification/PAD systems only with verifiable, cited claims.
 - Open-source/research alternatives represented in this repository.
 - On-device screening, cloud analysis, and human escalation.
@@ -226,14 +289,15 @@ Create a traceable table with requirement ID, stakeholder, acceptance criterion,
 Candidate functional requirements:
 
 - FR-1 capture a front-camera facial sequence.
-- FR-2 preprocess frames consistently with the deployed model contract.
-- FR-3 classify a 24-frame clip locally and return calibrated real/fake confidence rather than only a hard label.
-- FR-4 apply a documented confidence/quality policy that can accept a clear low-risk case, request recapture, reject or retry a clear attack, or escalate an uncertain/high-risk case.
-- FR-5 run a stronger second-stage detector when escalation is available; candidate components are temporal G2V2Former, domain-generalized GD-FAS, and a universal or manipulation-routed Xception branch.
-- FR-6 normalize/calibrate second-stage scores and combine them under an auditable decision policy.
-- FR-7 return score, label, model version, timing, route taken, and reason code without exposing attack-enabling detail to the user.
-- FR-8 refer persistently ambiguous or conflicting high-impact cases to an authorized human reviewer when that workflow is implemented.
-- FR-9 remove temporary raw captures after processing.
+- FR-2 establish reasonable confidence that frames originate from the intended live sensor/session; detect or constrain virtual cameras, emulators, replayed buffers, and API/process injection where platform capabilities permit.
+- FR-3 preprocess frames consistently with the deployed model contract.
+- FR-4 classify a 24-frame clip locally and return calibrated real/fake confidence rather than only a hard label.
+- FR-5 apply a documented confidence/quality policy that can accept a clear low-risk case, request recapture, reject or retry a clear attack, or escalate an uncertain/high-risk case.
+- FR-6 run a stronger second-stage detector when escalation is available; candidate components are temporal G2V2Former, domain-generalized GD-FAS, and a universal or meta-routed Xception branch.
+- FR-7 normalize/calibrate second-stage scores and combine them under an auditable decision policy.
+- FR-8 return score, label, model version, timing, route taken, and reason code without exposing attack-enabling detail to the user.
+- FR-9 refer persistently ambiguous or conflicting high-impact cases to an authorized human reviewer when that workflow is implemented.
+- FR-10 remove temporary raw captures after processing.
 
 Candidate non-functional requirements:
 
@@ -243,6 +307,7 @@ Candidate non-functional requirements:
 - NF-4 privacy and retention constraints.
 - NF-5 accessibility and retry/fallback behavior.
 - NF-6 maintainability through model contracts and versioned artifacts.
+- NF-7 capture-channel integrity, authenticated transport, auditability, and resistance to repeated probing.
 
 Earlier reports listed ambitious targets such as ACER below 5%, EER below 3%, AUC above 0.98, and total verification below 2.5 seconds. Treat these as target requirements and report whether they were met; do not present them as achieved.
 
@@ -267,11 +332,11 @@ Compare genuinely different alternatives against common criteria:
 2. Lightweight temporal MobileNetV3 with average pooling.
 3. Graph-guided visual/landmark transformer.
 4. Domain-generalized vision-language FAS.
-5. Hard-routed manipulation-specific Xception experts.
+5. Embedding-conditioned hard routing among manipulation-specific Xception specialists.
 
 Criteria: in-domain discrimination, cross-domain generalization, mobile suitability, latency, memory/storage, interpretability, data needs, robustness, and implementation complexity.
 
-Conclude that the hard-routed expert ensemble is the selected **deepfake branch**, not a replacement for all physical PAD or temporal liveness cues.
+Conclude that embedding-conditioned specialist routing is a promising **deepfake branch candidate**, not a replacement for physical PAD, capture-channel assurance, or temporal liveness cues. Its intended five-specialist form is pending implementation and reevaluation.
 
 ## Chapter 4 — System Design and Implementation
 
@@ -280,7 +345,7 @@ Conclude that the hard-routed expert ensemble is the selected **deepfake branch*
 Make the two-layer decision pipeline one of the principal visual explanations of the report. Show at least four related diagrams:
 
 1. **As-built research system:** data preparation → model families → evaluations → Flutter local model and separately demonstrated FastAPI server.
-2. **Target two-layer verification pipeline:** capture/quality gate → on-device temporal MobileNetV3 → confidence-based decision or escalation → stronger server analysis → calibrated decision/retry → optional human review for unresolved hard cases.
+2. **Target two-layer verification pipeline:** capture provenance/integrity and quality gate → on-device temporal MobileNetV3 → confidence-based decision or escalation → stronger server analysis → calibrated decision/retry → optional human review for unresolved hard cases.
 3. **Temporal hierarchy:** inexpensive first-layer feature aggregation versus richer second-layer ordered visual/landmark interactions.
 4. **Implementation-status view:** distinguish integrated, separately implemented/evaluated, and proposed components.
 
@@ -296,7 +361,11 @@ The target pipeline figure should express the following logic without inventing 
 ```text
 Front-camera sequence
         |
-Capture/face/quality checks ---- poor quality ----> recapture guidance
+Capture provenance/integrity checks [proposed]
+  genuine sensor/session, virtual-camera/emulator/injection indicators,
+  authenticated protected channel
+        |
+Face and quality checks -------- poor quality ----> recapture guidance
         |
 Layer 1: on-device temporal MobileNetV3
 24 frames -> shared CNN features -> temporal mean -> logits -> P(fake)
@@ -329,16 +398,17 @@ Partition the implementation into:
 - LCC-FASD, Celeb-DF-v2, Asian-Fakes/SBI, and FF++ data processing.
 - Flutter capture/inference UI.
 - Experimental FastAPI endpoint.
-- DeepFake-MoE universal baseline, specialists, router, and XGBoost-head ablation.
+- Universal Xception baseline, five manipulation-specific specialists, embedding-conditioned meta-router, and XGBoost-head ablation in the historically named `DeepFake-MoE/` directory.
 
 Add a component-role/status table so readers can see where temporal modeling actually occurs:
 
 | Component | Input and temporal mechanism | Intended role | Current status |
 | --- | --- | --- | --- |
+| Capture-channel assurance | Sensor/session/device provenance rather than a learned temporal detector | Prevent injected or virtual-camera media from being trusted as genuine capture | Required target-state control; not implemented in the current Flutter prototype |
 | MobileNetV3 temporal-average model | Consecutive frames; shared 960-dimensional per-frame features averaged across time | Fast Layer-1 mobile screening and confidence generation | Exported as K=24 PyTorch Lite and integrated into Flutter; current training script records K=10, so checkpoint/export provenance must be reconciled |
 | G2V2Former | Eight uniformly sampled frames; visual-patch attention plus motion guidance from 68-landmark graphs | Stronger Layer-2 temporal analysis | Trained/evaluated and demonstrated through a separate FastAPI notebook; not connected to the app |
 | GD-FAS | Image-based CLIP ViT-B/16 features; no learned temporal module in the evaluated implementation | Domain-generalized PAD/spatial evidence in Layer 2 or comparison baseline | Evaluated under the common protocol; not served or integrated |
-| Universal/routed Xception | Individual 299x299 frames; manipulation-specific hard routing, but no temporal module | Digital-manipulation evidence in Layer 2 | Evaluated on FF++ frames; not served or integrated |
+| Universal/meta-routed Xception | Individual 299x299 frames; embedding-conditioned hard specialist selection, but no temporal module | Digital-manipulation evidence in Layer 2 | Current metrics come from a six-way original/method router; intended five-expert selector is not yet rerun, served, or integrated |
 | Score fusion and human review | Calibrated model/quality evidence accumulated across the decision path | Resolve model disagreement and high-impact hard cases | Proposed only |
 
 ### 4.2 Design Refinement and Simulation
@@ -354,8 +424,9 @@ Document the refinements as engineering decisions:
 - Original-video-group 90/10 FF++ splitting was used to avoid frame/video leakage in the later direct-deepfake experiments.
 - Aligned FF++ real/fake extraction produced 1,000 video groups, 100 frames per method/video, and 600,000 total frames.
 - Specialists trained per manipulation method.
-- Six-way router followed by one selected expert; real-route fallback uses router probability.
-- XGBoost router-head experiment as an alternative design that did not outperform the CNN head.
+- Current six-way router followed by either one selected specialist or an `original` fallback; record this as the evaluated legacy formulation, not the desired final method.
+- Intended refinement: a 2,048-dimensional frame embedding feeds a five-way meta-routing head that estimates `P(best expert | embedding)` and transfers every frame to exactly one binary specialist.
+- XGBoost router-head experiment as an alternative embedding-to-route model that did not outperform the CNN head under the current six-way formulation; it must be refit for any five-expert comparison.
 - Fixed mobile inference contract `[1, 24, 3, 224, 224]`, RGB, ImageNet normalization, two raw logits.
 
 Make the contrast between the two temporal designs explicit:
@@ -370,11 +441,11 @@ For the Layer-2 figure, draw three lanes that converge only at a proposed calibr
 
 - G2V2Former lane: eight frames and landmark extraction -> visual patches + landmark graphs -> spatial/temporal interaction -> liveness/deepfake score.
 - GD-FAS lane: selected image frame(s) -> CLIP visual/text representation and domain-generalization mechanism -> PAD score.
-- Xception lane: selected frame(s) -> universal model, or six-way router -> selected manipulation expert/real fallback -> deepfake score.
+- Xception lane: selected frame(s) -> universal baseline, or frame embedding -> five-way meta-router -> selected binary specialist -> deepfake score. Mark this as the intended rerun; include a separate annotation that the recorded results currently use a six-way original/method router.
 
 Use dashed arrows for all mobile-to-server calls, multi-model fusion, and human escalation because those links are not active in the current application.
 
-Call the routing method a **hard-gated/routed expert ensemble**. It is MoE-like, but it is not an end-to-end differentiable soft MoE and is only one branch of the overall project.
+Call the intended method an **embedding-conditioned meta-routed specialist ensemble** or **hard specialist-routing model**. Avoid “MoE” as the primary name: the router makes one discrete expert assignment from a learned embedding and the chosen binary specialist performs the real/fake decision. Classical mixture-of-experts terminology may appear only in related work, with the difference stated explicitly.
 
 ### 4.3 Application of Tools
 
@@ -401,8 +472,8 @@ Describe exact implementations with references to repository artifacts:
 - `data-processing/prep-sbi-extra.ipynb`: paired real/SBI preparation from South Asian, Asian, and non-Asian sources, including face-quality filtering and split limitations.
 - `data-processing/image-from-ff.ipynb`: FF++ C23 frame extraction and leakage-aware split.
 - `lib/pages/liveness_page.dart`: 24-frame capture, preprocessing, raw-tensor inference, softmax decision, and temporary-file deletion.
-- `DeepFake-MoE/capstone-xception.ipynb`: five experts, universal baseline, six-way router, and routed-ensemble evaluation.
-- `DeepFake-MoE/xception-xgb.ipynb`: frozen 2,048-dimensional router embeddings and XGBoost head ablation.
+- `DeepFake-MoE/capstone-xception.ipynb`: historically named directory containing five specialists, a universal baseline, and the current six-way `original`/method router. State that this notebook does not yet implement the intended five-expert best-model router.
+- `DeepFake-MoE/xception-xgb.ipynb`: frozen 2,048-dimensional router embeddings and current six-class XGBoost-head ablation; it also requires a five-expert refit.
 
 State code reality precisely: the Flutter app currently captures 24 consecutive frames, constructs one `[1,24,3,224,224]` tensor, performs local MobileNetV3 inference, applies softmax, and uses a fixed 0.5 boundary. The second-stage HTTP call is commented out. The G2V2Former FastAPI server was demonstrated separately but is not currently wired into the app. GD-FAS, Xception routing, cross-model score fusion, confidence-band routing, and human review are also not part of the running mobile flow.
 
@@ -411,7 +482,7 @@ State code reality precisely: the Flutter app currently captures 24 consecutive 
 Separate current and intended deployment:
 
 - **Current:** local Flutter prototype with bundled PyTorch Lite model; separately demonstrated Kaggle/FastAPI endpoint.
-- **Intended:** versioned local model, capture-quality gate, calibrated two-threshold escalation policy, authenticated encrypted server endpoint, selected/fused second-stage evidence, monitoring, rollback, raw-capture minimization, and an accountable review/appeal path for hard cases.
+- **Intended:** versioned local model, capture provenance/integrity and quality gates, calibrated two-threshold escalation policy, authenticated encrypted server endpoint, selected/fused second-stage evidence, monitoring, rollback, raw-capture minimization, and an accountable review/appeal path for hard cases.
 
 Include resource evidence only when measured. The model contract reports a 13.8 MiB input tensor for one 24-frame clip. Do not reuse old RAM/latency estimates as measured values unless their profiling artifacts are available.
 
@@ -427,7 +498,7 @@ Use explicit research questions:
 - **RQ2:** Do models trained for physical PAD transfer to digital deepfake datasets without target-domain training?
 - **RQ3:** How do G2V2Former and the domain-generalized GD-FAS baseline compare under the same LCC-FASD, Celeb-DF-v2, and Asian-Fakes protocol?
 - **RQ4:** How does Celeb-DF-v2 fine-tuning change target performance, source-domain retention, and transfer to Asian-Fakes?
-- **RQ5:** Do manipulation-specific experts outperform a universal deepfake classifier, and can a router use that specialization effectively?
+- **RQ5:** Do manipulation-specific specialists outperform a universal deepfake classifier, and can an embedding-conditioned meta-router learn `P(best expert | embedding)` well enough to exploit that specialization?
 - **RQ6:** Does an XGBoost router head improve over the trained CNN linear head?
 - **RQ7:** Can a calibrated first-stage confidence policy reduce server use while preserving an acceptable FAR/FRR operating point, and which samples should be escalated?
 - **RQ8:** What accuracy, fairness, privacy, latency, resource, human-oversight, and integration limitations remain before deployment?
@@ -487,18 +558,20 @@ Explain the current temporal pipeline separately from that earlier result:
 
 #### Later manipulation-specific routing experiment
 
-Present DeepFake-MoE after the temporal/domain-generalization investigation as a separate experiment motivated by heterogeneous digital manipulation artifacts.
+Present the **embedding-conditioned specialist-routing investigation** after the temporal/domain-generalization work as a separate experiment motivated by heterogeneous digital manipulation artifacts. Use `DeepFake-MoE/` only when referring to the repository path.
 
 Protocol:
 
 - Dataset: FaceForensics++ C23.
-- Classes: original plus Deepfakes, Face2Face, FaceShifter, FaceSwap, NeuralTextures.
+- Data categories: genuine `original` frames plus five manipulated types—Deepfakes, Face2Face, FaceShifter, FaceSwap, and NeuralTextures. Group these into identity swaps, reenactment, and neural rendering as defined in the Chapter 1 taxonomy.
 - 1,000 original-video pair groups; 900 train and 100 validation groups.
 - 100 extracted frames per video/class: 540,000 train and 60,000 validation frames.
 - Validation is group/video-disjoint from training.
 - Backbone: Cadene/FF++-style Xception, about 20.81 million parameters per model, pretrained backbone, full fine-tuning.
 - Input: 299×299 with Xception-style normalization and on-the-fly blur/JPEG/flip augmentation.
-- Five binary specialists, one binary universal model, and one six-class router.
+- Five binary real-versus-method specialists and one binary universal model.
+- **Recorded router:** one six-class Xception head over `original` plus five manipulation labels; its penultimate representation is 2,048-dimensional. The XGBoost ablation replaces its linear head using those frozen embeddings.
+- **Intended router:** one five-way meta-model over the five specialists, with no `original` route, trained to estimate `P(best expert | embedding)`. Its results are pending a leakage-safe target definition and rerun.
 - Maximum 15 epochs, batch size 128, AdamW, initial learning rate `1e-4`, weight decay `1e-5`.
 - Fixed binary score threshold 0.5 for the saved comparison.
 
@@ -507,10 +580,10 @@ Results:
 | Model | Accuracy | Balanced accuracy | ROC-AUC | Average precision | Real accuracy | Fake accuracy |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | Universal Xception | 81.83% | 76.44% | 86.32% | 96.62% | 68.37% | 84.52% |
-| CNN-routed expert ensemble | 84.44% | 84.51% | 91.68% | 98.22% | 84.62% | 84.40% |
-| XGBoost-head routed ensemble | 83.49% | 82.39% | 88.73% | 97.73% | 80.73% | 84.05% |
+| Current six-way CNN-routed ensemble | 84.44% | 84.51% | 91.68% | 98.22% | 84.62% | 84.40% |
+| Current six-way XGBoost-head ensemble | 83.49% | 82.39% | 88.73% | 97.73% | 80.73% | 84.05% |
 
-The primary comparison is universal versus CNN-routed ensemble:
+The currently recorded comparison is universal versus the six-way CNN-routed ensemble:
 
 - Balanced accuracy: **+8.07 percentage points**.
 - ROC-AUC: **+5.36 percentage points**.
@@ -520,7 +593,7 @@ The primary comparison is universal versus CNN-routed ensemble:
 
 Per-method balanced accuracy:
 
-| Method | Own specialist | Universal | Routed ensemble |
+| Method | Own specialist | Universal | Current six-way routed ensemble |
 | --- | ---: | ---: | ---: |
 | Deepfakes | 94.86% | 79.81% | 88.62% |
 | Face2Face | 92.36% | 78.47% | 85.20% |
@@ -531,11 +604,12 @@ Per-method balanced accuracy:
 Interpretation:
 
 - Specialists are strong only on their own manipulation and are mostly near chance on other methods.
-- The router converts some of that specialization into a usable decision path and improves every per-method comparison against the universal model.
+- The current router converts some of that specialization into a usable decision path and improves every per-method comparison against the universal model.
 - The routed system does not reach oracle specialist performance because route errors expose samples to the wrong expert.
 - NeuralTextures is the hardest method and is frequently confused with originals.
 - The CNN router is better than the XGBoost-head replacement in both routing and final ensemble metrics.
 - The improvement is meaningful but remains in-domain and frame-level; it must not overshadow the temporal and domain-generalization findings or be presented as the completed liveness system.
+- None of these observations demonstrates `P(best expert | embedding)` yet, because the current target is six-way source-method/original classification. Keep the result as a useful precursor and replace it after the intended meta-router rerun.
 
 ### 5.2 Performance Evaluation
 
@@ -549,8 +623,9 @@ Include:
 - Asian-Fakes subgroup results with an explicit warning that they are not a complete fairness audit.
 - Mobile artifact correctness contract and, if rerun, real-device latency/memory.
 - G2V2 latency pilot on Tesla T4: about 1,269.9 ms mean end-to-end for an eight-frame video, 129.4 ms model time, measured over only five runs; present this as a small pilot, not a stable service-level result.
-- DeepFake-MoE universal/specialist/routed comparison.
-- Router accuracy and confusion matrix: 81.12% six-way accuracy/balanced accuracy.
+- Universal/specialist/routed Xception comparison, with the routing formulation named explicitly.
+- Current router accuracy and confusion matrix: 81.12% six-way accuracy/balanced accuracy. Do not carry this number into the intended five-expert result table.
+- For the intended router, report five-way top-1 routing accuracy, oracle-best-expert agreement, routing regret relative to the oracle, final binary metrics, route distribution for genuine and fake frames, and comparison with always-best-single and universal baselines.
 - Cross-method specialist matrix and XGBoost-head ablation.
 
 ### 5.3 Deviations and Design Revisions
@@ -581,10 +656,10 @@ Replace the template's generic Gantt with actual project dates and milestones:
 - G2V2Former and domain-shift experiments.
 - GD-FAS and Asian-Fakes comparison.
 - Temporal mobile integration.
-- DeepFake-MoE and router-head ablation.
+- Specialist routing and router-head ablation.
 - Final evaluation and report.
 
-Risks: dataset leakage, domain shift, class imbalance, training instability, missing checkpoints, hardware dependence, model obsolescence, biometric privacy, false acceptance, false rejection, route failure, and scope inflation.
+Risks: dataset leakage, domain shift, class imbalance, training instability, missing checkpoints, hardware dependence, model obsolescence, biometric privacy, false acceptance, false rejection, route failure, virtual-camera/API injection, capture-channel compromise, adversarial probing, and scope inflation.
 
 #### 6.1.2 Budgeting and Resource Identification
 
@@ -688,12 +763,12 @@ Summarize achievement against each numbered objective. The conclusion should com
 
 Prioritized future work:
 
-1. Establish one common, leakage-safe evaluation suite for MobileNetV3, G2V2Former, GD-FAS, and routed experts.
+1. Establish one common, leakage-safe evaluation suite for MobileNetV3, G2V2Former, GD-FAS, and routed specialists.
 2. Add held-out and cross-dataset testing, unseen generators, open-set attacks, and repeated seeds with uncertainty estimates.
 3. Improve temporal modeling, landmark reliability, frequency/blending evidence, and source-domain retention during deepfake fine-tuning.
 4. Add video-level aggregation to the manipulation-specific expert branch and compare hard, soft, and top-k routing.
 5. Calibrate probabilities, select confidence-band thresholds using asymmetric security and exclusion costs, and measure the accuracy--escalation--latency trade-off.
-6. Complete and secure the mobile-to-server path; choose and validate the Layer-2 selection/fusion policy, then add authentication, encryption, monitoring, rollback, and privacy-preserving retention.
+6. Complete and secure the capture-to-server path: add feasible sensor/session provenance and virtual-camera/injection controls, choose and validate the Layer-2 selection/fusion policy, then add authentication, encryption, monitoring, rollback, and privacy-preserving retention.
 7. Evaluate fairness with consented, properly documented demographic data, subgroup FAR/FRR, confidence intervals, and accessible fallback paths.
 8. Measure real-device/model-server storage, RAM, latency, battery/energy, and throughput; then compress or distill where needed.
 9. Test compression, resizing, blur, camera recapture, adversarial post-processing, replay, injection, and mixed physical--digital attacks.
@@ -714,7 +789,7 @@ Use concrete evidence:
 
 Minimum recommended visuals:
 
-1. Physical versus digital attack taxonomy.
+1. Physical-versus-digital attack taxonomy with separate delivery-path, manipulation-family, and evidence-type axes.
 2. Project evolution/timeline.
 3. As-built component architecture.
 4. Main two-layer edge--server--review decision pipeline, with confidence bands and every edge labeled as implemented or proposed.
@@ -726,11 +801,12 @@ Minimum recommended visuals:
 10. G2V2Former versus GD-FAS common-protocol comparison.
 11. Asian-Fakes transfer comparison with an explicit fairness limitation caption.
 12. FF++ extraction and group-disjoint split.
-13. DeepFake-MoE router/expert data flow.
-14. Specialist cross-method heatmap and router confusion matrix.
-15. Universal versus routed-ensemble metric comparison.
-16. If implemented: reliability diagram and confidence/escalation trade-off curve; otherwise list these as required future evaluation, not results.
-17. Actual project Gantt chart.
+13. Embedding-conditioned specialist-routing data flow: frame -> 2,048-dimensional embedding -> `P(best expert | embedding)` -> hard expert selection -> binary fake probability. Show no `original` route in the intended figure.
+14. A clearly labeled current-versus-intended router diagram: current six-way original/method classifier versus intended five-expert selector.
+15. Specialist cross-method heatmap and router confusion matrix; do not reuse the six-way matrix as evidence for the five-way router.
+16. Universal versus routed-ensemble metric comparison, labeled with the exact router version.
+17. If implemented: reliability diagram and confidence/escalation trade-off curve; otherwise list these as required future evaluation, not results.
+18. Actual project Gantt chart.
 
 Minimum recommended tables:
 
@@ -746,14 +822,15 @@ Minimum recommended tables:
 10. G2V2Former architecture/training configuration and results.
 11. GD-FAS protocol deviations and results.
 12. Cross-domain G2V2Former/GD-FAS comparison.
-13. DeepFake-MoE universal/specialist/router results.
-14. Per-method specialist/universal/ensemble comparison.
-15. Objectives/requirements versus final status.
-16. Engineering risks and mitigations.
-17. Ethical risk--control--evidence matrix.
-18. Budget/resource breakdown.
-19. Verified team contributions.
-20. Third-party assets, licenses, and attribution.
+13. Universal/specialist/meta-router results with current and intended formulations separated.
+14. Five manipulation types, generation family, expected artifact differences, specialist, and dataset coverage.
+15. Per-method specialist/universal/ensemble comparison.
+16. Objectives/requirements versus final status.
+17. Engineering risks and mitigations.
+18. Ethical risk--control--evidence matrix.
+19. Budget/resource breakdown.
+20. Verified team contributions.
+21. Third-party assets, licenses, and attribution.
 
 ## 7. Claims that must be avoided or qualified
 
@@ -761,6 +838,8 @@ Minimum recommended tables:
 - Do not imply that Pathao supplied training/evaluation data, compute, grants, or sustained technical assistance; its documented role was providing the project problem and early context.
 - Do not describe public dataset or open-source authors as project sponsors or direct collaborators unless they actually provided assistance.
 - Do not say the system is ISO certified or legally compliant without formal evidence.
+- Do not treat vendor marketing as independent performance or compliance evidence. In particular, do not copy the ARSA article's standards list uncritically: ISO 45001 concerns occupational health and safety, whereas biometric presentation-attack testing belongs to the ISO/IEC 30107 family.
+- Do not present NIST SP 800-63A-4 as binding Bangladesh law; use it as authoritative security guidance and separately establish which Bangladesh requirements apply.
 - Do not call FF++ validation performance cross-dataset generalization.
 - Do not claim demographic fairness from Asian-Fakes results.
 - Do not claim the current app uses the G2V2Former server; the call is disabled.
@@ -768,7 +847,10 @@ Minimum recommended tables:
 - Do not call the current Flutter softmax output calibrated confidence or present `tau_pass`/`tau_attack` as chosen values until calibration and operating-point selection are performed.
 - Do not describe GD-FAS or the evaluated Xception experts as temporal models. They are frame-based spatial/domain-specialized complements; only a future video-level aggregation would combine their evidence across frames.
 - Do not imply that a human reviewer is currently available, or that model disagreement is already handed off to one.
-- Do not present the hard router as a conventional end-to-end soft MoE without qualification.
+- Do not use “MoE” as the primary name for the final routing method. Use **embedding-conditioned meta-routed specialist ensemble** or **hard specialist-routing model** and define the discrete routing equation.
+- Do not say the current notebooks implement `P(best expert | embedding)`: they currently learn a six-way `original`/manipulation classifier. Do not report the current 81.12% routing score or routed binary metrics as five-expert meta-router results.
+- Do not retain an `original` route or `1 - P(original)` fallback in the intended mathematical formulation. Every frame must be assigned to one of the five binary specialists.
+- Do not equate a manipulation-method target with a best-expert target without showing that the matched specialist is actually the oracle best model for that sample.
 - Do not use accuracy alone on the 10,000-real/50,000-fake overall validation set.
 - Do not imply the five expert checkpoints or server checkpoint are versioned in this repository when they are external/not tracked.
 - Do not use the latest report's 21.71% best LCC-FASD HTER until it is reconciled with the current notebook outputs (24.07% in one run and 22.38% in the common-protocol experiment).
@@ -781,7 +863,7 @@ Minimum recommended tables:
 - Final confirmation of the provisional title, **Leveraging Temporal Information for Robust Liveness Verification**.
 - Session, submission date, supervisor details.
 - Confirmed spelling of all names.
-- Exact wording for the supervisor's contribution, including that the DeepFake-MoE/routing idea was the supervisor's.
+- Exact wording for the supervisor's contribution, including that the embedding-conditioned specialist-routing idea was the supervisor's.
 - Name/title of the Pathao contact if required, limited to the initial project brief and early context.
 - Course policy for generative-AI disclosure.
 
@@ -790,6 +872,9 @@ Minimum recommended tables:
 - Reconcile the G2V2Former 21.71%, 22.38%, and 24.07% best-HTER values and identify the final authoritative run.
 - Freeze the exact G2V2Former and GD-FAS checkpoints, dataset subsets, thresholds, and result CSVs used in the common-protocol table.
 - Verify complete bibliographic metadata and implementation attribution for G2V2Former and GD-FAS.
+- Trace the LinkedIn post's injection-attack percentages to the original iProov threat report, record its vendor-observation scope, and use NIST/ENISA for the core injection threat model. Treat ARSA as practitioner/vendor context rather than validation of this project's controls.
+- Freeze a three-axis attack taxonomy—delivery path, manipulation family, and evidence type—and ensure every dataset/result is mapped to the attacks it actually covers.
+- Decide whether virtual-camera/injection resistance remains an explicit unimplemented requirement or whether any capture-integrity control can be prototyped and tested before submission.
 - Reconcile the MobileNetV3 temporal configurations: the current training script uses K=10, while full-video inference, export, and Flutter use K=24. Record the checkpoint hash, saved training `num_frames`, export provenance, and whether changing K at inference is validated.
 - Rerun/evaluate the exact K=24 MobileNetV3 checkpoint bundled with the Flutter app; the repository has its model contract but no committed result CSV.
 - Run the mobile acceptance test using one shared video in Python and Flutter.
@@ -799,9 +884,12 @@ Minimum recommended tables:
 - If GD-FAS or Xception contributes video-level evidence, implement and compare frame sampling and score/logit aggregation; do not relabel frame models as temporal architectures.
 - Specify the proposed human-review trigger, information shown, reviewer authority, appeal path, retention/access controls, and audit log. Keep it explicitly future work unless a functioning workflow is built and tested.
 - Measure real-device latency, RAM, model load time, and battery/energy if mobile-performance claims will be made.
-- Add cross-dataset and unseen-method evaluation for DeepFake-MoE.
-- Add a true held-out test set or nested validation protocol for MoE.
-- Calculate calibrated FAR, FRR, EER/HTER, confidence intervals, and repeated-seed variance for the final MoE.
+- Redesign the router output from six classes to five experts and remove the `original` fallback from both CNN and XGBoost paths.
+- Define leakage-safe best-expert labels using out-of-fold specialist probabilities/losses; document tie handling and how genuine frames receive expert targets. If method labels are retained instead, rename the target honestly as manipulation-method routing.
+- Rerun the full routed evaluation and replace all current six-way metrics/plots before claiming the intended embedding-conditioned meta-router is implemented.
+- Add cross-dataset and unseen-method evaluation for the specialist-routing model, including an explicit policy for an unseen manipulation that matches none of the five training routes.
+- Add a true held-out test set or nested validation protocol for specialist routing.
+- Calculate calibrated FAR, FRR, EER/HTER, routing regret, confidence intervals, and repeated-seed variance for the final specialist-routing model.
 - Preserve versioned model checkpoints/configuration hashes or explain their external storage.
 - Verify whether the FF++ usage license permits the intended reporting/distribution.
 
@@ -842,7 +930,28 @@ Within the technical design/evaluation material, a reasonable balance is:
 
 - G2V2Former, GD-FAS, and their common cross-domain analysis: approximately 40–45%.
 - Lightweight/mobile temporal work and integration: approximately 20–25%.
-- DeepFake-MoE and its routing ablation: approximately 20–25%.
+- Embedding-conditioned specialist routing and its router-head ablation: approximately 20–25%.
 - Cross-cutting synthesis of limitations, safety, fairness, and deployment implications: approximately 10–15%.
 
-The report should not read as a collection of unrelated models, and it should not culminate rhetorically in DeepFake-MoE as though all earlier work were only preparation for it. It should follow the real chronology: a broad secure-liveness problem, layered system design, lightweight/mobile modeling, temporal G2V2Former investigation, GD-FAS domain-generalization comparison, integration work, and finally manipulation-specific routing as an additional strong result. G2V2Former, GD-FAS, the cross-domain findings, the mobile prototype, and the ethical analysis should receive substantial independent attention.
+The report should not read as a collection of unrelated models, and it should not culminate rhetorically in specialist routing as though all earlier work were only preparation for it. It should follow the real chronology: a broad secure-liveness problem, layered system design, lightweight/mobile modeling, temporal G2V2Former investigation, GD-FAS domain-generalization comparison, integration work, and finally embedding-conditioned specialist routing as an additional result. G2V2Former, GD-FAS, the cross-domain findings, the mobile prototype, and the ethical analysis should receive substantial independent attention.
+
+## 11. Proofread current-status snapshot
+
+Use this table as the final guard against turning intended design into completed work:
+
+| Item | Status after repository audit | Permitted report wording |
+| --- | --- | --- |
+| Flutter MobileNetV3 Layer 1 | Implemented locally for one consecutive K=24 clip with a fixed 0.5 softmax boundary | “Integrated mobile prototype”; not “calibrated cascade” |
+| K=10 training versus K=24 export | Unreconciled provenance/evaluation issue | State the mismatch and verify before reporting the shipped artifact's performance |
+| G2V2Former temporal Layer 2 | Trained/evaluated; FastAPI demonstrated separately | “Experimental server-side model”; not “connected second layer” |
+| GD-FAS | Evaluated as an image-based domain-generalization comparison | “Comparison/candidate server evidence”; not “temporal model” or “deployed service” |
+| Xception specialists and universal model | Evaluated on FF++ C23 frames with group-disjoint validation | Report as in-domain, frame-level evidence only |
+| Current CNN and XGBoost routers | Six-way `original` plus five-method classifiers | Report current numbers only as the previous six-way formulation |
+| Intended meta-router | Five expert outputs estimating `P(best expert | embedding)` with no `original` route | Proposed until best-expert targets are defined and both router heads and final metrics are rerun |
+| Confidence-band mobile-to-server escalation | Designed in this plan; HTTP call disabled | Target architecture/future integration only |
+| Capture-channel/injection defense | Threat requirement identified; no sensor attestation or virtual-camera defense found | Unimplemented requirement and future work |
+| Score fusion across G2V2Former, GD-FAS, and Xception | No integrated/calibrated fusion found | Candidate design only |
+| Human review/appeal workflow | No implementation found | Proposed safeguard only |
+| Pathao involvement | Initial problem and early context only; no private data, grant, or sustained technical support documented | Acknowledge accurately without implying sponsorship or deployment |
+
+Before submission, repeat this audit against the final commit, model artifacts, and result files so the report's tense, captions, diagrams, and abstract all match the evidence then available.
