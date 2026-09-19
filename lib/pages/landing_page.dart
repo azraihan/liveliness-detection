@@ -1,280 +1,161 @@
-import 'dart:math';
 import 'package:flutter/material.dart';
+import '../painters/scan_ring_painter.dart';
+import '../theme/app_theme.dart';
+import '../widgets/animated_label.dart';
+import '../widgets/app_button.dart';
+import '../widgets/fade_rise.dart';
+import '../widgets/theme_toggle.dart';
 import 'liveness_page.dart';
 
 class LandingPage extends StatefulWidget {
   const LandingPage({super.key});
+
   @override
   State<LandingPage> createState() => _LandingPageState();
 }
 
 class _LandingPageState extends State<LandingPage>
-    with TickerProviderStateMixin {
-  late final AnimationController _rotCtrl;
-  late final AnimationController _pulseCtrl;
-  late final AnimationController _entryCtrl;
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _orbit = AnimationController(
+    vsync: this,
+    duration: const Duration(seconds: 12),
+  )..repeat();
 
-  late final Animation<double> _rotAnim;
-  late final Animation<double> _pulseAnim;
-  late final Animation<double> _entryAnim;
-
-  @override
-  void initState() {
-    super.initState();
-
-    _rotCtrl = AnimationController(
-        vsync: this, duration: const Duration(seconds: 6))
-      ..repeat();
-    _rotAnim =
-        Tween<double>(begin: 0, end: 2 * pi).animate(_rotCtrl);
-
-    _pulseCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 1800))
-      ..repeat(reverse: true);
-    _pulseAnim = CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut);
-
-    _entryCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 900));
-    _entryAnim =
-        CurvedAnimation(parent: _entryCtrl, curve: Curves.easeOutCubic);
-    _entryCtrl.forward();
-  }
+  // Read once in build; kept as a field so the three checklist rows and the
+  // button can share one delay ladder.
+  static const _step = Duration(milliseconds: 70);
 
   @override
   void dispose() {
-    _rotCtrl.dispose();
-    _pulseCtrl.dispose();
-    _entryCtrl.dispose();
+    _orbit.dispose();
     super.dispose();
   }
 
-  void _goToLiveness() {
+  void _start() {
     Navigator.of(context).push(
-      PageRouteBuilder(
-        pageBuilder: (_, anim, __) => const LivenessPage(),
-        transitionsBuilder: (_, anim, __, child) => SlideTransition(
-          position: Tween<Offset>(
-            begin: const Offset(1.0, 0.0),
-            end: Offset.zero,
-          ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
-          child: FadeTransition(opacity: anim, child: child),
-        ),
-        transitionDuration: const Duration(milliseconds: 480),
-      ),
+      MaterialPageRoute(builder: (_) => const LivenessPage()),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final p = context.palette;
+
+    // The call to action is pinned outside the scroll view rather than pushed
+    // down by a Spacer: it stays reachable on a short screen, and the content
+    // above it scrolls on its own without any intrinsic-height guesswork.
     return Scaffold(
-      backgroundColor: const Color(0xFF080C14),
       body: SafeArea(
-        child: FadeTransition(
-          opacity: _entryAnim,
-          child: SlideTransition(
-            position: Tween<Offset>(
-              begin: const Offset(0, 0.04),
-              end: Offset.zero,
-            ).animate(_entryAnim),
-            child: SingleChildScrollView(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 28),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(horizontal: Space.gutter),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const SizedBox(height: 28),
-                    _buildTopRow(),
-                    const SizedBox(height: 44),
-                    _buildHeroIcon(),
-                    const SizedBox(height: 36),
-                    _buildTitleBlock(),
-                    const SizedBox(height: 36),
-                    _buildChecklist(),
-                    const SizedBox(height: 24),
-                    _buildStartButton(),
-                    const SizedBox(height: 36),
+                    const SizedBox(height: Space.sm),
+                    _header(p),
+                    const SizedBox(height: Space.xxxl),
+                    FadeRise(delay: _step, child: _mark(p)),
+                    const SizedBox(height: Space.xl),
+                    FadeRise(delay: _step * 2, child: _title(t)),
+                    const SizedBox(height: Space.xxl),
+                    FadeRise(delay: _step * 3, child: _checklist(p)),
+                    const SizedBox(height: Space.xl),
                   ],
                 ),
               ),
             ),
-          ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                  Space.gutter, 0, Space.gutter, Space.lg),
+              child: FadeRise(delay: _step * 5, child: _footer(t, p)),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  // ── Top row ───────────────────────────────────────────────────────────────
-  Widget _buildTopRow() {
+  // ── Header ────────────────────────────────────────────────────────────────
+  // Each piece carries exactly one animation: the dot fades, the wordmark
+  // types itself in, the toggle follows. No element is animated twice.
+  Widget _header(AppPalette p) {
+    final t = Theme.of(context).textTheme;
+
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-          decoration: BoxDecoration(
-            border: Border.all(color: const Color(0xFF00E5FF).withOpacity(0.25)),
-            borderRadius: BorderRadius.circular(30),
-            color: const Color(0xFF00E5FF).withOpacity(0.06),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _PulseDot(color: const Color(0xFF00E5FF)),
-              const SizedBox(width: 8),
-              const Text(
-                'SECURE  ·  ENCRYPTED',
-                style: TextStyle(
-                  color: Color(0xFF00E5FF),
-                  fontSize: 10,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 1.4,
+        Row(
+          children: [
+            FadeRise(
+              offset: 0,
+              child: Container(
+                width: 6,
+                height: 6,
+                decoration: BoxDecoration(
+                  color: p.textTertiary,
+                  shape: BoxShape.circle,
                 ),
               ),
-            ],
-          ),
+            ),
+            const SizedBox(width: Space.sm),
+            StaggeredLabel(
+              text: 'LIVENESS',
+              style: t.labelSmall,
+              delay: const Duration(milliseconds: 140),
+              repeat: true,
+            ),
+          ],
         ),
-        Container(
-          width: 38,
-          height: 38,
-          decoration: BoxDecoration(
-            color: const Color(0xFF111827),
-            borderRadius: BorderRadius.circular(11),
-          ),
-          child: const Icon(Icons.help_outline_rounded,
-              color: Colors.white38, size: 18),
+        const FadeRise(
+          offset: 0,
+          delay: Duration(milliseconds: 260),
+          child: ThemeToggle(),
         ),
       ],
     );
   }
 
-  // ── Animated hero icon ────────────────────────────────────────────────────
-  Widget _buildHeroIcon() {
-    return Center(
+  // ── Mark ──────────────────────────────────────────────────────────────────
+  // The old screen opened with three rotating rings and a glow. This is the
+  // whole of what replaces it: one circle, one dot, one slow orbit.
+  Widget _mark(AppPalette p) {
+    return SizedBox(
+      width: 56,
+      height: 56,
       child: AnimatedBuilder(
-        animation: Listenable.merge([_rotAnim, _pulseAnim]),
-        builder: (context, _) {
-          return SizedBox(
-            width: 180,
-            height: 180,
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                // Outer dashed ring – slow rotation
-                Transform.rotate(
-                  angle: _rotAnim.value,
-                  child: CustomPaint(
-                    size: const Size(176, 176),
-                    painter: _DashedRingPainter(
-                      color: const Color(0xFF00E5FF).withOpacity(0.25),
-                      dashes: 24,
-                    ),
-                  ),
-                ),
-                // Middle ring – counter-rotation
-                Transform.rotate(
-                  angle: -_rotAnim.value * 0.55,
-                  child: CustomPaint(
-                    size: const Size(140, 140),
-                    painter: _DashedRingPainter(
-                      color: const Color(0xFF6C63FF).withOpacity(0.20),
-                      dashes: 16,
-                    ),
-                  ),
-                ),
-                // Glow backdrop
-                Container(
-                  width: 100 + _pulseAnim.value * 6,
-                  height: 100 + _pulseAnim.value * 6,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFF00E5FF)
-                            .withOpacity(0.12 + _pulseAnim.value * 0.08),
-                        blurRadius: 30,
-                        spreadRadius: 10,
-                      ),
-                    ],
-                  ),
-                ),
-                // Core circle
-                Container(
-                  width: 96,
-                  height: 96,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: const Color(0xFF0D1526),
-                    border: Border.all(
-                      color: const Color(0xFF00E5FF)
-                          .withOpacity(0.35 + _pulseAnim.value * 0.15),
-                      width: 1.5,
-                    ),
-                  ),
-                  child: const Icon(
-                    Icons.face_retouching_natural,
-                    color: Color(0xFF00E5FF),
-                    size: 42,
-                  ),
-                ),
-                // Corner brackets
-                ..._buildBrackets(),
-              ],
-            ),
-          );
-        },
+        animation: _orbit,
+        builder: (context, _) => CustomPaint(
+          painter: OrbitMarkPainter(
+            // A step up from the hairline border token: the ring was reading
+            // as almost nothing on paper, and it is the screen's only mark.
+            phase: reducedMotion(context) ? 0 : _orbit.value,
+            ringColor: p.textGhost,
+            dotColor: p.textSecondary,
+          ),
+        ),
       ),
     );
   }
 
-  List<Widget> _buildBrackets() {
-    const size = 168.0;
-    const bSize = 14.0;
-    const color = Color(0xFF00E5FF);
-    final positions = [
-      (top: 0.0, left: 0.0, rotate: 0.0),
-      (top: 0.0, left: size - bSize, rotate: pi / 2),
-      (top: size - bSize, left: 0.0, rotate: -pi / 2),
-      (top: size - bSize, left: size - bSize, rotate: pi),
-    ];
-    return positions
-        .map(
-          (p) => Positioned(
-            top: p.top,
-            left: p.left,
-            child: Transform.rotate(
-              angle: p.rotate,
-              child: CustomPaint(
-                size: const Size(bSize, bSize),
-                painter: _BracketPainter(color: color.withOpacity(0.55)),
-              ),
-            ),
-          ),
-        )
-        .toList();
-  }
-
-  // ── Title block ───────────────────────────────────────────────────────────
-  Widget _buildTitleBlock() {
+  // ── Title ─────────────────────────────────────────────────────────────────
+  Widget _title(TextTheme t) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Verify Your\nIdentity',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 36,
-            fontWeight: FontWeight.w800,
-            height: 1.12,
-            letterSpacing: -0.5,
-          ),
-        ),
-        const SizedBox(height: 12),
-        Text(
-          "We'll use your camera to confirm it's really you. This check takes about 15 seconds.",
-          style: TextStyle(
-            color: Colors.white.withOpacity(0.42),
-            fontSize: 14,
-            height: 1.55,
-            letterSpacing: 0.1,
+        Text('Verify your\nidentity', style: t.displaySmall),
+        const SizedBox(height: Space.md),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 320),
+          child: Text(
+            'Your camera confirms a real person is present. '
+            'Nothing leaves the device.',
+            style: t.bodyLarge,
           ),
         ),
       ],
@@ -282,226 +163,104 @@ class _LandingPageState extends State<LandingPage>
   }
 
   // ── Checklist ─────────────────────────────────────────────────────────────
-  Widget _buildChecklist() {
+  // An editorial index rather than icon tiles: numbered rows on hairlines,
+  // hierarchy from weight and opacity alone.
+  Widget _checklist(AppPalette p) {
     const items = [
-      (Icons.wb_sunny_outlined, 'Good Lighting',
-          'Face a window or lamp — no harsh backlighting'),
-      (Icons.remove_red_eye_outlined, 'Eyes Visible',
-          'Remove sunglasses or tinted lenses'),
-      (Icons.sensors_rounded, 'Stay Still',
-          'Move only when prompted on the next screen'),
+      ('01', 'Even lighting', 'Face a window or lamp, not away from one'),
+      ('02', 'Eyes visible', 'Remove sunglasses or tinted lenses'),
+      ('03', 'Hold steady', 'Stay inside the circle for a few seconds'),
     ];
 
     return Column(
-      children: items
-          .map((item) => _ChecklistRow(
-                icon: item.$1,
-                title: item.$2,
-                subtitle: item.$3,
-              ))
-          .toList(),
-    );
-  }
-
-  // ── Start button ──────────────────────────────────────────────────────────
-  Widget _buildStartButton() {
-    return GestureDetector(
-      onTap: _goToLiveness,
-      child: Container(
-        width: double.infinity,
-        height: 62,
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [Color(0xFF0099BB), Color(0xFF00E5FF)],
-            begin: Alignment.centerLeft,
-            end: Alignment.centerRight,
+      children: [
+        Divider(color: p.borderSubtle),
+        for (final (i, item) in items.indexed) ...[
+          FadeRise(
+            delay: _step * (3 + i),
+            child: _ChecklistRow(
+              index: item.$1,
+              title: item.$2,
+              detail: item.$3,
+            ),
           ),
-          borderRadius: BorderRadius.circular(18),
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFF00E5FF).withOpacity(0.28),
-              blurRadius: 24,
-              offset: const Offset(0, 10),
-            ),
-          ],
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Text(
-              'Start Verification',
-              style: TextStyle(
-                color: Color(0xFF080C14),
-                fontSize: 16,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0.2,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Container(
-              width: 30,
-              height: 30,
-              decoration: BoxDecoration(
-                color: const Color(0xFF080C14).withOpacity(0.18),
-                borderRadius: BorderRadius.circular(9),
-              ),
-              child: const Icon(
-                Icons.arrow_forward_rounded,
-                color: Color(0xFF080C14),
-                size: 17,
-              ),
-            ),
-          ],
-        ),
-      ),
+          Divider(color: p.borderSubtle),
+        ],
+      ],
     );
   }
-}
 
-// ─── Small widgets ────────────────────────────────────────────────────────────
-
-class _PulseDot extends StatefulWidget {
-  final Color color;
-  const _PulseDot({required this.color});
-  @override
-  State<_PulseDot> createState() => _PulseDotState();
-}
-
-class _PulseDotState extends State<_PulseDot>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _c =
-      AnimationController(vsync: this, duration: const Duration(milliseconds: 900))
-        ..repeat(reverse: true);
-  @override
-  void dispose() {
-    _c.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _c,
-      builder: (_, __) => Container(
-        width: 7,
-        height: 7,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: widget.color.withOpacity(0.5 + _c.value * 0.5),
-          boxShadow: [
-            BoxShadow(
-              color: widget.color.withOpacity(0.4 * _c.value),
-              blurRadius: 6,
-            ),
-          ],
+  // ── Footer ────────────────────────────────────────────────────────────────
+  Widget _footer(TextTheme t, AppPalette p) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        AppButton(
+          label: 'Begin verification',
+          onPressed: _start,
+          trailingIcon: Icons.arrow_forward,
         ),
-      ),
+        const SizedBox(height: Space.md),
+        Center(
+          child: Text(
+            'Takes about 15 seconds · On-device',
+            style: t.bodyMedium?.copyWith(
+              color: p.textTertiary,
+              fontSize: 12,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
 
 class _ChecklistRow extends StatelessWidget {
-  final IconData icon;
+  final String index;
   final String title;
-  final String subtitle;
-  const _ChecklistRow(
-      {required this.icon, required this.title, required this.subtitle});
+  final String detail;
+
+  const _ChecklistRow({
+    required this.index,
+    required this.title,
+    required this.detail,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final p = context.palette;
+
     return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.symmetric(vertical: Space.md),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: const Color(0xFF111827),
-              borderRadius: BorderRadius.circular(13),
-              border: Border.all(color: Colors.white.withOpacity(0.07)),
-            ),
-            child: Icon(icon, color: const Color(0xFF00E5FF), size: 20),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.only(top: 2),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title,
-                      style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 2),
-                  Text(subtitle,
-                      style: TextStyle(
-                          color: Colors.white.withOpacity(0.38),
-                          fontSize: 12.5,
-                          height: 1.4)),
-                ],
+          SizedBox(
+            width: 36,
+            child: Text(
+              index,
+              style: t.labelSmall?.copyWith(
+                color: p.textGhost,
+                fontFeatures: AppTheme.tabular,
               ),
+            ),
+          ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: t.labelMedium),
+                const SizedBox(height: 3),
+                Text(
+                  detail,
+                  style: t.bodyMedium?.copyWith(color: p.textTertiary),
+                ),
+              ],
             ),
           ),
         ],
       ),
     );
   }
-}
-
-// ─── Painters ─────────────────────────────────────────────────────────────────
-
-class _DashedRingPainter extends CustomPainter {
-  final Color color;
-  final int dashes;
-  const _DashedRingPainter({required this.color, required this.dashes});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final radius = min(size.width, size.height) / 2 - 1;
-    final center = Offset(size.width / 2, size.height / 2);
-    const gapRatio = 0.45;
-    final dashSweep = (2 * pi / dashes) * (1 - gapRatio);
-
-    for (int i = 0; i < dashes; i++) {
-      final start = i * 2 * pi / dashes;
-      canvas.drawArc(
-        Rect.fromCircle(center: center, radius: radius),
-        start,
-        dashSweep,
-        false,
-        Paint()
-          ..color = color
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.5
-          ..strokeCap = StrokeCap.round,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(_DashedRingPainter old) => false;
-}
-
-class _BracketPainter extends CustomPainter {
-  final Color color;
-  const _BracketPainter({required this.color});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final p = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2
-      ..strokeCap = StrokeCap.round;
-    final s = size.width;
-    canvas.drawLine(Offset(0, s), const Offset(0, 0), p);
-    canvas.drawLine(const Offset(0, 0), Offset(s, 0), p);
-  }
-
-  @override
-  bool shouldRepaint(_BracketPainter old) => false;
 }

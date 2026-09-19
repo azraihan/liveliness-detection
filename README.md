@@ -8,7 +8,43 @@
 
 ---
 
-A beautiful, mock face liveness detection UI built in Flutter. Features a dark "deep space biometric" aesthetic with animated glowing arcs, live camera feed, and smooth transitions.
+A face liveness detection app built in Flutter. It records a short clip from the
+front camera and runs a MobileNetV3 temporal model **on the device** to decide
+whether it is looking at a live face or a spoof — no frames leave the phone.
+
+The interface is deliberately quiet: a neutral stone palette, one accent (ink on
+paper), hierarchy carried by opacity rather than colour, and motion used only
+where it indicates state. Light and dark are both first-class.
+
+---
+
+## 🖼 Screens
+
+Light and dark follow the system setting, with a toggle on the landing screen.
+
+**Light**
+
+| Landing | Verification | Verified |
+|:--:|:--:|:--:|
+| <img src="docs/screens/landing-light.png" width="240"> | <img src="docs/screens/liveness-light.png" width="240"> | <img src="docs/screens/success-light.png" width="240"> |
+
+**Dark**
+
+| Landing | Verification | Verified |
+|:--:|:--:|:--:|
+| <img src="docs/screens/landing-dark.png" width="240"> | <img src="docs/screens/liveness-dark.png" width="240"> | <img src="docs/screens/success-dark.png" width="240"> |
+
+> The verification screen is shown in its `PREPARING` state — the capture
+> harness has no camera, so the preview is a placeholder.
+
+Regenerate every screenshot after a UI change:
+
+```bash
+flutter test tool/screenshots_test.dart --update-goldens
+```
+
+That harness lives outside `test/` on purpose: `flutter test` would otherwise
+compare the PNGs as goldens, and they render slightly differently per machine.
 
 ---
 
@@ -16,9 +52,9 @@ A beautiful, mock face liveness detection UI built in Flutter. Features a dark "
 
 | Page | Description |
 |------|-------------|
-| **Landing** | Instructions + animated face scanner icon → tap to start |
-| **Liveness** | Camera in circular frame + 4 glowing arc segments that pulse and extend per step |
-| **Success** | Expanding green rings + animated checkmark |
+| **Landing** | Wordmark, instruction index, and a single ink call to action → tap to start |
+| **Liveness** | Circular camera preview inside a hairline ring; the ring fills as the 24-frame clip is collected, and a band of radial ticks breathes around it while capturing |
+| **Success** | The ring closes in green, then the checkmark draws itself, over a receipt of what was checked |
 
 ---
 
@@ -149,13 +185,27 @@ git push
 
 ```
 lib/
-├── main.dart                    # App entry point & theme
+├── main.dart                      # Entry point; wires light/dark themes, warms the model
+├── theme/
+│   ├── app_theme.dart             # AppPalette tokens, type scale, spacing, motion constants
+│   └── theme_controller.dart      # ThemeMode holder + InheritedNotifier scope
+├── services/
+│   └── liveness_model.dart        # Process-wide TorchScript module, loaded once
 ├── painters/
-│   └── face_frame_painter.dart  # Custom arc painter + scan line painter
+│   └── scan_ring_painter.dart     # Progress ring, capture ticks, scan sweep, orbit mark, checkmark
+├── widgets/
+│   ├── animated_label.dart        # Per-character reveal + state-label swap
+│   ├── app_button.dart            # The app's only button (solid / quiet)
+│   ├── fade_rise.dart             # Staggered entrance primitive
+│   └── theme_toggle.dart          # Light ↔ dark control
 └── pages/
-    ├── landing_page.dart        # Intro page with animated scanner icon
-    ├── liveness_page.dart       # Camera + arc detection UI (simulated)
-    └── success_page.dart        # Verification success with animations
+    ├── landing_page.dart          # Instructions + start
+    ├── liveness_page.dart         # Camera, clip collection, inference, status
+    └── success_page.dart          # Verified result + receipt
+
+assets/fonts/                      # Inter (300/400/500/600)
+docs/screens/                      # Screenshots above
+tool/screenshots_test.dart         # Screenshot harness (not part of the test suite)
 ```
 
 ---
@@ -253,36 +303,63 @@ gd-fas/results/gdfas_auc_comparison.png
 
 ## 🎨 Design System
 
-| Token | Value | Usage |
-|-------|-------|-------|
-| Background | `#080C14` | Main background |
-| Surface | `#111827` | Cards, containers |
-| Cyan accent | `#00E5FF` | Active arcs, buttons, highlights |
-| Green accent | `#00FF9D` | Success state |
-| Purple accent | `#6C63FF` | Secondary rings (landing page) |
+Every colour lives in `AppPalette` (`lib/theme/app_theme.dart`) as a semantic
+token with a light and a dark value. Nothing in the UI names a hex code.
+
+| Token | Light | Dark | Usage |
+|-------|-------|------|-------|
+| `background` | `#FAFAF9` | `#0C0A09` | Page |
+| `surface` | `#FFFFFF` | `#16130F` | Raised surfaces |
+| `surfaceMuted` | `#F5F5F4` | `#1C1917` | Insets, placeholders |
+| `border` | `#E7E5E4` | `#292524` | Hairlines, ring track |
+| `ink` | `#1C1917` | `#FAFAF9` | Text, and the app's only accent |
+| `success` | `#1F7A4D` | `#6FC28F` | Verified |
+| `danger` | `#B42318` | `#E8857B` | Not confirmed |
+
+Two rules do most of the work:
+
+- **Hierarchy is opacity over `ink`, never a second hue** — `textPrimary` (100%),
+  `textSecondary` (60%), `textTertiary` (40%), `textGhost` (26%). The same four
+  steps in both modes.
+- **One accent, and it is ink itself.** `success` and `danger` are reserved for
+  the verdict and appear nowhere else.
+
+Type is Inter, bundled as an asset. Display sizes are *light* (300) with tight
+tracking; nothing exceeds 600. Spacing is an 8px scale (`Space`), radii and
+motion durations are likewise tokens (`Radii`, `Motion`).
 
 ---
 
 ## 🔧 Customisation
 
-**Change step timing** — in `liveness_page.dart`, find:
+**Decision threshold** — in `liveness_page.dart`:
 ```dart
-Timer.periodic(const Duration(milliseconds: 2800), ...)
+static const double _liveThreshold = 0.8;   // required P(real) to pass a clip
 ```
-Increase the value to give more time per step.
+Raising it trades false accepts for false rejects. The decision is per clip,
+with no agreement required across clips.
 
-**Change arc appearance** — in `face_frame_painter.dart`, adjust:
-- `_baseSweepDeg` — size of each arc segment
-- Stroke widths and blur radii in `_drawArc()`
+**Clip length** — `_clipFrames` in `liveness_page.dart` must match the exported
+model (`model_contract.json`); changing it alone will break inference.
 
-**Add more steps** — in `liveness_page.dart`, extend the `_steps` list.
+**Motion** — durations and curves are centralised in `Motion`
+(`lib/theme/app_theme.dart`). Screen-specific loops worth knowing:
+- `_tickPhaseCtrl` — how fast the capture ticks travel around the ring
+- `_holdMs` in `animated_label.dart` — how long the wordmark rests between cycles
+
+**Theme** — edit the `AppPalette.light` / `AppPalette.dark` constants; every
+screen follows.
+
+All ambient motion is gated on `prefers-reduced-motion` via `reducedMotion()`.
 
 ---
 
 ## 📦 Dependencies
 
 ```yaml
-camera: ^0.10.5+9   # Live camera preview
+camera: ^0.10.5+9           # Live camera preview / frame stream
+flutter_pytorch_lite: ^0.1.0+3  # On-device TorchScript inference
+http: ^1.2.0                # Reserved for the server-side second stage
 ```
 
 ---
