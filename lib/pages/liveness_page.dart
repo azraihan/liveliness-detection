@@ -1,11 +1,14 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_pytorch_lite/flutter_pytorch_lite.dart';
-import 'package:http/http.dart' as http;
+// Server-side second opinion is disabled for now — see _callApiLayer below.
+// import 'package:http/http.dart' as http;
 import '../painters/face_frame_painter.dart';
 import 'success_page.dart';
 
@@ -25,24 +28,33 @@ class _LivenessPageState extends State<LivenessPage>
   bool _isProcessing = false;
   bool _isNavigating = false;
 
-  // Majority voting over a temporal window — one entry per analysed frame.
-  static const int _maxSamples = 10;
-  final List<({bool isReal, double confidence})> _samples = [];
+  // ── Model contract (assets/models/model_contract.json) ───────────────────
+  // Input : float32 [1, 24, 3, 224, 224], layout N-K-C-H-W, RGB
+  // Output: float32 [1, 2] raw logits — index 0 = real, index 1 = fake
+  static const String _modelAsset = 'assets/models/mobilenetv3_temporal_k24.ptl';
+  static const int _clipFrames    = 24;
+  static const int _inputSize     = 224;
+  static const int _pixelsPerFrame = _inputSize * _inputSize;   //    50,176
+  static const int _floatsPerFrame = 3 * _pixelsPerFrame;       //   150,528
+  static const int _clipFloats = _clipFrames * _floatsPerFrame; // 3,612,672
+
+  /// One clip's input tensor, allocated once and refilled per clip (~13.8 MiB).
+  final Float32List _clipBuffer = Float32List(_clipFloats);
+  int _framesCollected = 0;
   DateTime? _windowStart;
 
   // Inference state
   bool _hasResult = false;
-  bool _isReal = false;
   bool _isSpoof = false;
-  double _confidence = 0.0;
+  double _confidence = 0.0; // probability of the winning class
 
-  // API second-layer state
-  bool _isCallingApi = false;
-  bool _isFinalFailure = false;
+  // ── API second-layer state — disabled for now, kept for later ────────────
+  // bool _isCallingApi = false;
+  // bool _isFinalFailure = false;
+  // static const String _apiUrl = 'http://168.144.41.182:8000/api/infer';
 
-  static const String _apiUrl = 'http://168.144.41.182:8000/api/infer';
-
-  Timer? _inferenceTimer;
+  bool _isCollecting = false;
+  Timer? _restartTimer;
 
   static const List<double> _mean = [0.485, 0.456, 0.406];
   static const List<double> _std  = [0.229, 0.224, 0.225];
@@ -81,10 +93,11 @@ class _LivenessPageState extends State<LivenessPage>
 
   Future<void> _loadModel() async {
     try {
-      final filePath = '${Directory.systemTemp.path}/mobilenetv2_mobile.ptl';
+      final filePath =
+          '${Directory.systemTemp.path}/mobilenetv3_temporal_k24.ptl';
       final modelFile = File(filePath);
       if (!await modelFile.exists()) {
-        final data = await rootBundle.load('assets/mobilenetv2_mobile.ptl');
+        final data = await rootBundle.load(_modelAsset);
         await modelFile.writeAsBytes(data.buffer.asUint8List());
       }
       _module = await FlutterPytorchLite.load(filePath);
@@ -111,90 +124,143 @@ class _LivenessPageState extends State<LivenessPage>
     }
   }
 
-  /// Wall-clock seconds spanned by the current voting window.
+  /// Wall-clock seconds spanned by the clip being collected.
   double get _elapsedSeconds => _windowStart == null
       ? 0
       : DateTime.now().difference(_windowStart!).inMilliseconds / 1000.0;
 
-  void _startInference() {
-    _inferenceTimer =
-        Timer.periodic(const Duration(milliseconds: 500), (_) => _runInference());
+  // ── Clip collection ───────────────────────────────────────────────────────
+  // The model consumes 24 consecutive frames per call, so frames are gathered
+  // back-to-back (not on a fixed timer) to keep the clip as short in real time
+  // as the device allows, then handed to the model as one tensor.
+
+  void _startInference() => _collectClip();
+
+  Future<void> _collectClip() async {
+    if (_isCollecting || _isNavigating || !mounted) return;
+    _isCollecting = true;
+
+    setState(() {
+      _framesCollected = 0;
+      _windowStart = DateTime.now();
+      _hasResult = false;
+    });
+
+    try {
+      while (_framesCollected < _clipFrames) {
+        if (!mounted || _isNavigating) return;
+        if (_camera == null || !_camera!.value.isInitialized) return;
+
+        await _captureFrameInto(_framesCollected);
+        if (!mounted || _isNavigating) return;
+        setState(() => _framesCollected++);
+      }
+      await _runClipInference();
+    } catch (e) {
+      debugPrint('Clip error: $e');
+    } finally {
+      _isCollecting = false;
+    }
   }
 
-  Future<void> _runInference() async {
-    if (!_modelLoaded || !_cameraReady || _isProcessing || _isNavigating) return;
-    if (_isCallingApi || _isFinalFailure) return;
-    if (_camera == null || !_camera!.value.isInitialized || _module == null) return;
+  /// Captures one frame and writes it, preprocessed, into slot [k] of the clip
+  /// buffer. Crop, scale, RGB extraction and ImageNet normalisation are fused
+  /// into a single pass so no intermediate 150k-element list is built per frame.
+  Future<void> _captureFrameInto(int k) async {
+    final XFile shot = await _camera!.takePicture();
+    try {
+      final Uint8List jpeg = await File(shot.path).readAsBytes();
+      final ui.Codec codec = await ui.instantiateImageCodec(jpeg);
+      final ui.FrameInfo frame = await codec.getNextFrame();
+      final ui.Image src = frame.image;
+
+      final ui.Image square = await _centerCropResize(src, _inputSize);
+      src.dispose();
+      codec.dispose();
+
+      final ByteData? rgba =
+          await square.toByteData(format: ui.ImageByteFormat.rawRgba);
+      square.dispose();
+      if (rgba == null) return;
+
+      final Uint8List px = rgba.buffer.asUint8List();
+      final int base = k * _floatsPerFrame;
+      final double mR = _mean[0], mG = _mean[1], mB = _mean[2];
+      final double sR = _std[0],  sG = _std[1],  sB = _std[2];
+
+      // Planar RGB: all R, then all G, then all B — the C dimension of N-K-C-H-W.
+      for (int p = 0; p < _pixelsPerFrame; p++) {
+        final int o = p * 4;
+        _clipBuffer[base + p] = (px[o] / 255.0 - mR) / sR;
+        _clipBuffer[base + _pixelsPerFrame + p] =
+            (px[o + 1] / 255.0 - mG) / sG;
+        _clipBuffer[base + 2 * _pixelsPerFrame + p] =
+            (px[o + 2] / 255.0 - mB) / sB;
+      }
+    } finally {
+      try {
+        await File(shot.path).delete();
+      } catch (_) {/* best effort */}
+    }
+  }
+
+  /// Center-crops the largest square from [src] and scales it to [size]².
+  Future<ui.Image> _centerCropResize(ui.Image src, int size) async {
+    final double side = math.min(src.width, src.height).toDouble();
+    final double dx = (src.width - side) / 2;
+    final double dy = (src.height - side) / 2;
+
+    final recorder = ui.PictureRecorder();
+    ui.Canvas(recorder).drawImageRect(
+      src,
+      ui.Rect.fromLTWH(dx, dy, side, side),
+      ui.Rect.fromLTWH(0, 0, size.toDouble(), size.toDouble()),
+      ui.Paint()..filterQuality = FilterQuality.high,
+    );
+    final ui.Picture picture = recorder.endRecording();
+    final ui.Image out = await picture.toImage(size, size);
+    picture.dispose();
+    return out;
+  }
+
+  // ── Inference ─────────────────────────────────────────────────────────────
+
+  Future<void> _runClipInference() async {
+    if (_module == null || _isNavigating || !mounted) return;
 
     _isProcessing = true;
     try {
-      final XFile imageFile = await _camera!.takePicture();
-
-      final imageProvider = FileImage(File(imageFile.path));
-      final image = await TensorImageUtils.imageProviderToImage(imageProvider);
-
-      // Get raw tensor (pixel values 0.0–1.0, NCHW: [1, 3, 224, 224])
-      final Tensor rawTensor = await TensorImageUtils.imageToFloat32Tensor(
-        image,
-        width: 224,
-        height: 224,
+      final Tensor input = Tensor.fromBlobFloat32(
+        _clipBuffer,
+        Int64List.fromList([1, _clipFrames, 3, _inputSize, _inputSize]),
       );
 
-      // Apply ImageNet normalization manually
-      final Float32List rawData = rawTensor.dataAsFloat32List;
-      const int pixelCount = 224 * 224;
-      final Float32List normData = Float32List(3 * pixelCount);
-      for (int c = 0; c < 3; c++) {
-        final double m = _mean[c];
-        final double s = _std[c];
-        final int offset = c * pixelCount;
-        for (int i = 0; i < pixelCount; i++) {
-          normData[offset + i] = (rawData[offset + i] - m) / s;
-        }
-      }
+      final IValue output = await _module!.forward([IValue.from(input)]);
+      final Float32List logits = output.toTensor().dataAsFloat32List;
+      if (logits.length < 2 || !mounted) return;
 
-      final Tensor inputTensor = Tensor.fromBlobFloat32(
-        normData,
-        Int64List.fromList([1, 3, 224, 224]),
-      );
+      // Raw logits — index 0 real, index 1 fake. Numerically stable softmax.
+      final double realLogit = logits[0];
+      final double fakeLogit = logits[1];
+      final double m = math.max(realLogit, fakeLogit);
+      final double realExp = math.exp(realLogit - m);
+      final double fakeExp = math.exp(fakeLogit - m);
+      final double pFake = fakeExp / (realExp + fakeExp);
 
-      final IValue output = await _module!.forward([IValue.from(inputTensor)]);
-      final Float32List outputData = output.toTensor().dataAsFloat32List;
+      debugPrint('logits: real=$realLogit fake=$fakeLogit  pFake=$pFake');
 
-      double prob = 0.5;
-      if (outputData.isNotEmpty) {
-        prob = outputData[0].clamp(0.0, 1.0);
-      }
+      final bool isReal = pFake < 0.5;
 
-      final bool isReal = prob > 0.5;
-      final double confidence = isReal ? prob : (1 - prob);
+      setState(() {
+        _hasResult  = true;
+        _isSpoof    = !isReal;
+        _confidence = isReal ? (1 - pFake) : pFake;
+      });
 
-      await File(imageFile.path).delete();
-
-      if (mounted && !_isNavigating) {
-        _windowStart ??= DateTime.now();
-        _samples.add((isReal: isReal, confidence: confidence));
-
-        final int realCount  = _samples.where((s) => s.isReal).length;
-        final int total      = _samples.length;
-
-        setState(() {
-          _hasResult  = true;
-          _isReal     = isReal;
-          _isSpoof    = !isReal;
-          _confidence = confidence;
-        });
-
-        if (total >= _maxSamples) {
-          final bool majorityReal = realCount > total ~/ 2;
-          if (majorityReal) {
-            _onRealDetected();
-          } else {
-            // Keep the window on screen — it's the evidence that triggered
-            // the server escalation.
-            _onLocalSpoofDetected();
-          }
-        }
+      if (isReal) {
+        _onRealDetected();
+      } else {
+        _onSpoofDetected();
       }
     } catch (e) {
       debugPrint('Inference error: $e');
@@ -203,75 +269,81 @@ class _LivenessPageState extends State<LivenessPage>
     }
   }
 
-  void _onLocalSpoofDetected() {
-    if (_isNavigating || _isCallingApi || _isFinalFailure) return;
-    _inferenceTimer?.cancel();
-    setState(() => _isCallingApi = true);
-    _callApiLayer();
+  /// No server fallback for now, so a spoof verdict simply shows, then a fresh
+  /// clip starts — the user is never stuck on a dead end.
+  void _onSpoofDetected() {
+    _restartTimer?.cancel();
+    _restartTimer = Timer(const Duration(milliseconds: 3500), () {
+      if (!mounted || _isNavigating) return;
+      _collectClip();
+    });
   }
 
-  Future<void> _callApiLayer() async {
-    try {
-      final XFile imageFile = await _camera!.takePicture();
-      final bytes = await File(imageFile.path).readAsBytes();
-      await File(imageFile.path).delete();
-
-      final response = await http.post(
-        Uri.parse(_apiUrl),
-        headers: {'Content-Type': 'image/jpeg'},
-        body: bytes,
-      ).timeout(const Duration(minutes: 2));
-
-      if (!mounted) return;
-
-      debugPrint('API response: ${response.body}');
-
-      if (response.statusCode == 200) {
-        // Response is a JSON array; parse the first element
-        final body = response.body.trim();
-        // Extract is_real field manually to avoid adding dart:convert dependency
-        final isRealMatch = RegExp(r'"is_real"\s*:\s*(true|false)').firstMatch(body);
-        final isReal = isRealMatch?.group(1) == 'true';
-
-        if (isReal) {
-          setState(() => _isCallingApi = false);
-          _onRealDetected();
-        } else {
-          setState(() {
-            _isCallingApi  = false;
-            _isFinalFailure = true;
-            _isSpoof       = true;
-            _hasResult     = true;
-          });
-        }
-      } else {
-        // Treat non-200 as final failure
-        setState(() {
-          _isCallingApi  = false;
-          _isFinalFailure = true;
-          _isSpoof       = true;
-          _hasResult     = true;
-        });
-      }
-    } catch (e) {
-      debugPrint('API error: $e');
-      if (mounted) {
-        setState(() {
-          _isCallingApi  = false;
-          _isFinalFailure = true;
-          _isSpoof       = true;
-          _hasResult     = true;
-        });
-      }
-    }
-  }
+  // ── Server second opinion — disabled for now, kept for later ──────────────
+  //
+  // void _onLocalSpoofDetected() {
+  //   if (_isNavigating || _isCallingApi || _isFinalFailure) return;
+  //   setState(() => _isCallingApi = true);
+  //   _callApiLayer();
+  // }
+  //
+  // Future<void> _callApiLayer() async {
+  //   try {
+  //     final XFile imageFile = await _camera!.takePicture();
+  //     final bytes = await File(imageFile.path).readAsBytes();
+  //     await File(imageFile.path).delete();
+  //
+  //     final response = await http.post(
+  //       Uri.parse(_apiUrl),
+  //       headers: {'Content-Type': 'image/jpeg'},
+  //       body: bytes,
+  //     ).timeout(const Duration(minutes: 2));
+  //
+  //     if (!mounted) return;
+  //     debugPrint('API response: ${response.body}');
+  //
+  //     if (response.statusCode == 200) {
+  //       final body = response.body.trim();
+  //       final isRealMatch =
+  //           RegExp(r'"is_real"\s*:\s*(true|false)').firstMatch(body);
+  //       final isReal = isRealMatch?.group(1) == 'true';
+  //
+  //       if (isReal) {
+  //         setState(() => _isCallingApi = false);
+  //         _onRealDetected();
+  //       } else {
+  //         setState(() {
+  //           _isCallingApi   = false;
+  //           _isFinalFailure = true;
+  //           _isSpoof        = true;
+  //           _hasResult      = true;
+  //         });
+  //       }
+  //     } else {
+  //       setState(() {
+  //         _isCallingApi   = false;
+  //         _isFinalFailure = true;
+  //         _isSpoof        = true;
+  //         _hasResult      = true;
+  //       });
+  //     }
+  //   } catch (e) {
+  //     debugPrint('API error: $e');
+  //     if (mounted) {
+  //       setState(() {
+  //         _isCallingApi   = false;
+  //         _isFinalFailure = true;
+  //         _isSpoof        = true;
+  //         _hasResult      = true;
+  //       });
+  //     }
+  //   }
+  // }
 
   void _onRealDetected() {
     if (_isNavigating) return;
     _isNavigating = true;
-    _samples.clear();
-    _windowStart = null;
-    _inferenceTimer?.cancel();
+    _restartTimer?.cancel();
 
     _extCtrl.reset();
     _extCtrl.forward();
@@ -293,7 +365,7 @@ class _LivenessPageState extends State<LivenessPage>
   void dispose() {
     _pulseCtrl.dispose();
     _extCtrl.dispose();
-    _inferenceTimer?.cancel();
+    _restartTimer?.cancel();
     _camera?.dispose();
     _module?.destroy();
     super.dispose();
@@ -472,21 +544,13 @@ class _LivenessPageState extends State<LivenessPage>
     String title;
     String subtitle;
 
+    final bool clipFull = _framesCollected >= _clipFrames;
+
     if (_isNavigating) {
       accentColor = const Color(0xFF00FF9D);
       icon        = Icons.check_circle_outline_rounded;
       title       = 'Face Verified!';
       subtitle    = 'Liveness confirmed — redirecting…';
-    } else if (_isFinalFailure) {
-      accentColor = const Color(0xFFFF4D6D);
-      icon        = Icons.block_rounded;
-      title       = 'Spoof Detected';
-      subtitle    = 'Liveness could not be confirmed. Please try again later.';
-    } else if (_isCallingApi) {
-      accentColor = const Color(0xFFFFB347);
-      icon        = Icons.cloud_sync_rounded;
-      title       = 'Double-Checking…';
-      subtitle    = 'Running secondary verification via server';
     } else if (isInitializing) {
       accentColor = Colors.white38;
       icon        = Icons.hourglass_empty_rounded;
@@ -497,23 +561,25 @@ class _LivenessPageState extends State<LivenessPage>
       icon        = Icons.warning_amber_rounded;
       title       = 'Spoof Detected';
       subtitle    =
-          'Please use your real face · ${(_confidence * 100).toStringAsFixed(1)}% confident';
+          'Not a live face · ${(_confidence * 100).toStringAsFixed(1)}% confident · retrying…';
+    } else if (clipFull && _isProcessing) {
+      accentColor = const Color(0xFFFFB347);
+      icon        = Icons.memory_rounded;
+      title       = 'Running Model…';
+      subtitle    = 'Analysing all $_clipFrames frames together';
     } else {
       accentColor = const Color(0xFF00E5FF);
       icon        = Icons.radar_rounded;
-      title       = _samples.isEmpty ? 'Scanning…' : 'Analysing Sequence…';
-      subtitle    = _samples.isEmpty
+      title       = _framesCollected == 0 ? 'Scanning…' : 'Recording Sequence…';
+      subtitle    = _framesCollected == 0
           ? 'Hold your face inside the circle'
-          : 'Frame ${_samples.length} of $_maxSamples · ${_elapsedSeconds.toStringAsFixed(1)}s observed';
+          : 'Frame $_framesCollected of $_clipFrames · ${_elapsedSeconds.toStringAsFixed(1)}s recorded';
     }
 
-    // The strip is the evidence for the verdict, so show it while the window
-    // is filling and while the server is adjudicating that same window.
-    final bool showStrip =
-        _samples.isNotEmpty && !_isNavigating && !isInitializing;
+    final bool showStrip = _framesCollected > 0 && !_isNavigating && !isInitializing;
 
     // Motion coaching only helps while we're still collecting frames.
-    final bool showHint = showStrip && !_isCallingApi && !_isFinalFailure;
+    final bool showHint = showStrip && !clipFull && !(_hasResult && _isSpoof);
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -616,14 +682,19 @@ class _LivenessPageState extends State<LivenessPage>
     );
   }
 
-  // ── Temporal sample strip ─────────────────────────────────────────────────
-  // One bar per analysed frame: height encodes that frame's confidence, colour
-  // its verdict. Unfilled slots show how much of the window is still to come,
-  // so the decision reads as a sequence rather than a single snapshot.
+  // ── Temporal clip strip ───────────────────────────────────────────────────
+  // One bar per frame in the 24-frame clip. Unlike the old per-frame model,
+  // there is no verdict until the whole clip runs, so the bars show the
+  // sequence being recorded and then all flash the result together.
   Widget _buildTemporalStrip() {
     const green = Color(0xFF00FF9D);
     const red   = Color(0xFFFF4D6D);
+    const cyan  = Color(0xFF00E5FF);
     const empty = Color(0xFF1A2640);
+
+    final bool hasVerdict = _hasResult;
+    final Color filledColor =
+        hasVerdict ? (_isSpoof ? red : green) : cyan;
 
     return Padding(
       padding: const EdgeInsets.only(top: 18),
@@ -631,35 +702,35 @@ class _LivenessPageState extends State<LivenessPage>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
-            height: 36,
+            height: 34,
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.end,
-              children: List.generate(_maxSamples, (i) {
-                final sample = i < _samples.length ? _samples[i] : null;
-                final bool isNewest = sample != null && i == _samples.length - 1;
-                final Color barColor =
-                    sample == null ? empty : (sample.isReal ? green : red);
+              children: List.generate(_clipFrames, (i) {
+                final bool filled = i < _framesCollected;
+                final bool isNewest = filled && i == _framesCollected - 1;
 
-                // Confidence runs 0.5–1.0, so rescale it across the track.
-                final double height = sample == null
-                    ? 6
-                    : 11 +
-                        ((sample.confidence - 0.5) / 0.5).clamp(0.0, 1.0) * 25;
+                // A gentle standing wave keeps the recorded run alive-looking
+                // without implying a per-frame score the model never produces.
+                final double height = filled
+                    ? 13 + math.sin(i * 0.7 + _pulseAnim.value * math.pi) * 5
+                    : 6;
 
                 return Expanded(
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 2.5),
+                    padding: const EdgeInsets.symmetric(horizontal: 1.2),
                     child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 280),
+                      duration: const Duration(milliseconds: 260),
                       curve: Curves.easeOutCubic,
                       height: height,
                       decoration: BoxDecoration(
-                        color: barColor.withOpacity(sample == null ? 0.35 : 0.9),
-                        borderRadius: BorderRadius.circular(3),
+                        color: filled
+                            ? filledColor.withOpacity(0.9)
+                            : empty.withOpacity(0.35),
+                        borderRadius: BorderRadius.circular(2),
                         boxShadow: isNewest
                             ? [
                                 BoxShadow(
-                                    color: barColor.withOpacity(0.55),
+                                    color: filledColor.withOpacity(0.55),
                                     blurRadius: 9)
                               ]
                             : null,
@@ -674,7 +745,7 @@ class _LivenessPageState extends State<LivenessPage>
           Row(
             children: [
               Text(
-                'TEMPORAL WINDOW',
+                'TEMPORAL CLIP · K=$_clipFrames',
                 style: TextStyle(
                   color: Colors.white.withOpacity(0.30),
                   fontSize: 9,
@@ -684,9 +755,13 @@ class _LivenessPageState extends State<LivenessPage>
               ),
               const Spacer(),
               Text(
-                '${_samples.where((s) => s.isReal).length}/${_samples.length} live',
+                hasVerdict
+                    ? (_isSpoof ? 'SPOOF' : 'LIVE')
+                    : '$_framesCollected/$_clipFrames',
                 style: TextStyle(
-                  color: Colors.white.withOpacity(0.30),
+                  color: hasVerdict
+                      ? filledColor.withOpacity(0.75)
+                      : Colors.white.withOpacity(0.30),
                   fontSize: 9,
                   fontWeight: FontWeight.w700,
                   letterSpacing: 1.2,
