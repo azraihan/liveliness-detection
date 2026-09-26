@@ -8,14 +8,17 @@ import 'package:flutter_pytorch_lite/flutter_pytorch_lite.dart';
 import 'package:image/image.dart' as img;
 import '../painters/scan_ring_painter.dart';
 import '../services/backend_config.dart';
+import '../services/challenge_settings.dart';
 import '../services/deepfake_api.dart';
+import '../services/face_challenge.dart';
 import '../services/liveness_model.dart';
 import '../theme/app_theme.dart';
 import '../widgets/animated_label.dart';
 import '../widgets/fade_rise.dart';
+import 'challenge_failed_page.dart';
 import 'success_page.dart';
 
-/// Side of the square JPEG posted to stage 2.
+/// Side of the square JPEG posted to stage 3.
 ///
 /// The server resizes whatever it gets to 342² and scores the central 299²
 /// window, so sending 384² means that resize is a downscale rather than an
@@ -34,8 +37,8 @@ Uint8List _encodeUploadJpeg(Uint8List rgb) {
   return img.encodeJpg(frame, quality: 92);
 }
 
-/// What stage 1 concluded about a clip.
-enum _Stage1 {
+/// What stage 2 concluded about a clip.
+enum _Stage2 {
   /// Every frame was confidently real. Decided on device, no network.
   live,
 
@@ -63,7 +66,7 @@ class _LivenessPageState extends State<LivenessPage>
   bool _isProcessing = false;
   bool _isNavigating = false;
 
-  // ── Stage 1 contract (mnetv2-anti-spoof-baseline/convert_to_ptl.py) ──────
+  // ── Stage 2 contract (mnetv2-anti-spoof-baseline/convert_to_ptl.py) ──────
   // Input : float32 [1, 3, 224, 224], layout N-C-H-W, RGB, ImageNet-normalised
   // Output: float32 [1, 1] — already through a sigmoid, and it is P(real)
   static const int _inputSize      = 224;
@@ -86,11 +89,11 @@ class _LivenessPageState extends State<LivenessPage>
   // ── The escalation rule ──────────────────────────────────────────────────
   // A clip is settled on device only when the frames are *unanimous* and past
   // the margin. One frame in the middle, or two frames pointing opposite ways,
-  // and the decision is not ours to make — it goes to stage 2.
+  // and the decision is not ours to make — it goes to stage 3.
   //
   //   min(pReal) >= 0.80  ->  live    (decided here)
   //   max(pReal) <= 0.20  ->  spoof   (decided here)
-  //   otherwise           ->  stage 2 (deepfake ensemble)
+  //   otherwise           ->  stage 3 (deepfake ensemble)
 
   /// Every frame must clear this for a local pass.
   static const double _liveMargin = 0.80;
@@ -112,10 +115,10 @@ class _LivenessPageState extends State<LivenessPage>
   /// Per-frame spread from the last clip, shown so a near miss is legible.
   double _minP = 0, _maxP = 0;
 
-  // ── Stage 2 state ────────────────────────────────────────────────────────
+  // ── Stage 3 state ────────────────────────────────────────────────────────
   bool _isEscalating = false;
 
-  /// Set when stage 2 could not be reached. The check is not failed on this —
+  /// Set when stage 3 could not be reached. The check is not failed on this —
   /// it retries on device — but the user is told the second opinion is missing.
   String? _offlineNote;
 
@@ -123,8 +126,29 @@ class _LivenessPageState extends State<LivenessPage>
   /// line. Detail only: the label comes from the score, never from this.
   String? _routedTo;
 
-  /// Completed by the next camera frame when stage 2 needs an image.
+  /// Completed by the next camera frame when stage 3 needs an image.
   Completer<Uint8List>? _rawFrameRequest;
+
+  // ── Challenge stage state (ML Kit) ───────────────────────────────────────
+
+  /// Null when the toggle is off, in which case the pipeline is the two
+  /// passive stages and the camera goes straight to clip collection.
+  FaceChallengeStage? _challenge;
+
+  /// True while the challenges are running and nothing else may touch frames.
+  bool _inChallenge = false;
+
+  /// Redraws the shared countdown once a second; the detector's own ticks are
+  /// too irregular to drive a clock off.
+  Timer? _budgetTicker;
+
+  /// Set briefly when a prompt is satisfied, so the UI can acknowledge it
+  /// before the next prompt replaces the line.
+  Challenge? _justPassed;
+  Timer? _passedTimer;
+
+  /// Why the current prompt is not progressing: no face, or more than one.
+  String? _framingNote;
 
   bool _isCollecting = false;
   int _sensorRotation = 0;
@@ -192,12 +216,125 @@ class _LivenessPageState extends State<LivenessPage>
 
   Future<void> _initAll() async {
     await Future.wait([_loadModel(), _initCamera()]);
-    if (mounted && _modelLoaded && _cameraReady) {
+    if (!mounted || !_modelLoaded || !_cameraReady) return;
+
+    // The toggle is read once, here. Flipping it mid-check would change what
+    // the screen is doing underneath the user.
+    if (ChallengeSettings.instance.enabled) {
+      _beginChallenges();
+    } else {
       _startInference();
     }
   }
 
-  /// Picks up the process-wide stage-1 module. Usually already warm from app
+  // ── Stage 1 of three: the ML Kit challenges ──────────────────────────────
+
+  void _beginChallenges() {
+    final stage = FaceChallengeStage()..start();
+    setState(() {
+      _challenge = stage;
+      _inChallenge = true;
+      _framingNote = null;
+      _justPassed = null;
+    });
+
+    // One attempt, one shared 30s clock — so the countdown is the whole of the
+    // failure condition and has to keep ticking even if ML Kit sees nothing.
+    _budgetTicker?.cancel();
+    _budgetTicker = Timer.periodic(const Duration(milliseconds: 250), (_) {
+      if (!mounted || !_inChallenge) return;
+      if (stage.isExpired) {
+        _onChallengesFailed();
+      } else {
+        setState(() {});
+      }
+    });
+  }
+
+  void _onChallengeFrame(CameraImage image) {
+    final stage = _challenge;
+    if (stage == null || stage.isBusy) return;
+
+    // Fire and forget: detection is slower than the camera, and the busy flag
+    // above is what keeps frames from queueing up behind it.
+    unawaited(stage.processFrame(image, _sensorRotation).then((tick) {
+      if (!mounted || !_inChallenge) return;
+      switch (tick) {
+        case ChallengeTick.noFace:
+          setState(() => _framingNote = 'No face in frame');
+        case ChallengeTick.crowded:
+          setState(() => _framingNote = 'More than one face in frame');
+        case ChallengeTick.waiting:
+          if (_framingNote != null) setState(() => _framingNote = null);
+        case ChallengeTick.advanced:
+          _acknowledge(stage);
+        case ChallengeTick.complete:
+          _acknowledge(stage);
+          _onChallengesPassed();
+        case ChallengeTick.expired:
+          _onChallengesFailed();
+      }
+    }));
+  }
+
+  /// Holds the completed prompt on screen for a beat. Without it the line
+  /// swaps the instant the user succeeds and it reads as if nothing happened.
+  void _acknowledge(FaceChallengeStage stage) {
+    final done = stage.completed > 0 ? stage.queue[stage.completed - 1] : null;
+    setState(() {
+      _justPassed = done;
+      _framingNote = null;
+    });
+    _passedTimer?.cancel();
+    _passedTimer = Timer(const Duration(milliseconds: 900), () {
+      if (!mounted) return;
+      setState(() => _justPassed = null);
+    });
+  }
+
+  void _onChallengesPassed() {
+    if (!_inChallenge) return;
+    _budgetTicker?.cancel();
+    debugPrint('challenges passed: '
+        '${_challenge?.queue.map((c) => c.name).join(" → ")}');
+    setState(() => _inChallenge = false);
+    // Straight into the passive stages; the camera never stops.
+    _startInference();
+  }
+
+  /// The gate closed. One attempt means this is terminal — no retry loop, and
+  /// the model stages never run.
+  void _onChallengesFailed() {
+    if (!_inChallenge || _isNavigating) return;
+    _budgetTicker?.cancel();
+    _passedTimer?.cancel();
+
+    final stage = _challenge;
+    debugPrint('challenges failed on ${stage?.failedOn?.name} '
+        '(${stage?.completed}/${stage?.total})');
+
+    setState(() {
+      _inChallenge = false;
+      _isNavigating = true;
+    });
+
+    Navigator.of(context).pushReplacement(
+      PageRouteBuilder(
+        pageBuilder: (_, a, __) => ChallengeFailedPage(
+          failedOn: stage?.failedOn,
+          completed: stage?.completed ?? 0,
+          total: stage?.total ?? Challenge.values.length,
+        ),
+        transitionsBuilder: (_, a, __, child) => FadeTransition(
+          opacity: CurvedAnimation(parent: a, curve: Motion.enter),
+          child: child,
+        ),
+        transitionDuration: Motion.slow,
+      ),
+    );
+  }
+
+  /// Picks up the process-wide stage-2 module. Usually already warm from app
   /// start, so this returns on the first frame; if not, it awaits the same
   /// in-flight load rather than starting a second one.
   Future<void> _loadModel() async {
@@ -218,7 +355,7 @@ class _LivenessPageState extends State<LivenessPage>
         orElse: () => cameras.first,
       );
       // Frames are pulled straight off the preview stream, so we want raw
-      // planes rather than JPEGs — no disk round-trip, no re-decode. Stage 2's
+      // planes rather than JPEGs — no disk round-trip, no re-decode. Stage 3's
       // upload is encoded from the same stream, so the camera is never
       // interrupted mid-check to take a picture.
       _camera = CameraController(cam, ResolutionPreset.medium,
@@ -263,7 +400,14 @@ class _LivenessPageState extends State<LivenessPage>
   void _onCameraFrame(CameraImage image) {
     if (_isNavigating || !mounted) return;
 
-    // Stage 2 asked for an image; this is the first frame since. Serve it and
+    // The challenges own the camera until they are done. Nothing downstream
+    // sees a frame before the gate opens.
+    if (_inChallenge) {
+      _onChallengeFrame(image);
+      return;
+    }
+
+    // Stage 3 asked for an image; this is the first frame since. Serve it and
     // fall through — a capture request never costs the clip a frame.
     final pending = _rawFrameRequest;
     if (pending != null) {
@@ -290,7 +434,7 @@ class _LivenessPageState extends State<LivenessPage>
 
     if (next >= _clipFrames) {
       _setCollecting(false);
-      _runStage1();
+      _runStage2();
     }
   }
 
@@ -402,7 +546,7 @@ class _LivenessPageState extends State<LivenessPage>
   }
 
   /// The same crop and rotation, at [_uploadSize] and as plain interleaved RGB
-  /// bytes: what stage 2 gets, before JPEG. No normalisation — the server does
+  /// bytes: what stage 3 gets, before JPEG. No normalisation — the server does
   /// its own preprocessing and wants ordinary pixels. Not mirrored, matching
   /// what the local model scored; the preview is mirrored for the user only.
   Uint8List _rgbFrameBytes(CameraImage image) {
@@ -472,9 +616,9 @@ class _LivenessPageState extends State<LivenessPage>
     return out;
   }
 
-  // ── Stage 1: MobileNetV2, per frame, on device ────────────────────────────
+  // ── Stage 2: MobileNetV2, per frame, on device ────────────────────────────
 
-  Future<void> _runStage1() async {
+  Future<void> _runStage2() async {
     if (_module == null || _isNavigating || !mounted) return;
 
     setState(() => _isProcessing = true);
@@ -508,11 +652,11 @@ class _LivenessPageState extends State<LivenessPage>
 
       final double meanP = sumP / _clipFrames;
 
-      final _Stage1 verdict = minP >= _liveMargin
-          ? _Stage1.live
-          : (maxP <= _spoofMargin ? _Stage1.spoof : _Stage1.uncertain);
+      final _Stage2 verdict = minP >= _liveMargin
+          ? _Stage2.live
+          : (maxP <= _spoofMargin ? _Stage2.spoof : _Stage2.uncertain);
 
-      debugPrint('stage1 ${clipSecs.toStringAsFixed(2)}s clip · '
+      debugPrint('stage2 ${clipSecs.toStringAsFixed(2)}s clip · '
           '${sw.elapsedMilliseconds}ms for $_clipFrames frames · '
           'pReal min=${minP.toStringAsFixed(3)} '
           'mean=${meanP.toStringAsFixed(3)} '
@@ -526,25 +670,25 @@ class _LivenessPageState extends State<LivenessPage>
       });
 
       switch (verdict) {
-        case _Stage1.live:
+        case _Stage2.live:
           setState(() {
             _hasResult = true;
             _isSpoof = false;
             _confidence = meanP;
           });
           _onRealDetected();
-        case _Stage1.spoof:
+        case _Stage2.spoof:
           setState(() {
             _hasResult = true;
             _isSpoof = true;
             _confidence = meanP;
           });
           _onSpoofDetected();
-        case _Stage1.uncertain:
-          await _runStage2(fallbackConfidence: meanP);
+        case _Stage2.uncertain:
+          await _runStage3(fallbackConfidence: meanP);
       }
     } catch (e) {
-      debugPrint('Stage 1 error: $e');
+      debugPrint('Stage 2 error: $e');
       if (mounted) setState(() => _isProcessing = false);
       _retryShortly();
     } finally {
@@ -552,17 +696,17 @@ class _LivenessPageState extends State<LivenessPage>
     }
   }
 
-  // ── Stage 2: the deepfake ensemble, over the network ──────────────────────
+  // ── Stage 3: the deepfake ensemble, over the network ──────────────────────
 
   /// Sends one frame to the server and lets its verdict stand. Unreachable is
   /// deliberately **not** a failed check: the user is told the second opinion
   /// is missing and the loop starts a fresh clip, rather than being blocked by
   /// a Kaggle notebook that happens to be asleep.
-  Future<void> _runStage2({required double fallbackConfidence}) async {
+  Future<void> _runStage3({required double fallbackConfidence}) async {
     if (_isNavigating || !mounted) return;
 
     if (!BackendConfig.instance.isConfigured) {
-      debugPrint('Stage 2 skipped: no backend URL configured');
+      debugPrint('Stage 3 skipped: no backend URL configured');
       _showOffline('No second-opinion server is set up', fallbackConfidence);
       return;
     }
@@ -578,7 +722,7 @@ class _LivenessPageState extends State<LivenessPage>
       final Prediction p = await DeepfakeApi.predict(jpeg);
       if (!mounted || _isNavigating) return;
 
-      debugPrint('stage2 $p');
+      debugPrint('stage3 $p');
 
       setState(() {
         _isEscalating = false;
@@ -596,7 +740,7 @@ class _LivenessPageState extends State<LivenessPage>
         _onSpoofDetected();
       }
     } on ApiFailure catch (f) {
-      debugPrint('Stage 2 failed: $f');
+      debugPrint('Stage 3 failed: $f');
       _showOffline(
         f.isUnreachable
             ? 'Second-opinion server unreachable'
@@ -604,7 +748,7 @@ class _LivenessPageState extends State<LivenessPage>
         fallbackConfidence,
       );
     } catch (e) {
-      debugPrint('Stage 2 error: $e');
+      debugPrint('Stage 3 error: $e');
       _showOffline('Second opinion unavailable', fallbackConfidence);
     }
   }
@@ -677,10 +821,16 @@ class _LivenessPageState extends State<LivenessPage>
     _tickPhaseCtrl.dispose();
     _tickAmpCtrl.dispose();
     _restartTimer?.cancel();
+    _budgetTicker?.cancel();
+    _passedTimer?.cancel();
     // Stop feeding the converter before the controller goes away.
     _isCollecting = false;
-    // An in-flight stage-2 capture would otherwise hang until its timeout.
+    _inChallenge = false;
+    // An in-flight stage-3 capture would otherwise hang until its timeout.
     _rawFrameRequest = null;
+    // The detector holds a native ML Kit handle, so unlike the TorchScript
+    // modules it does have to be closed.
+    unawaited(_challenge?.dispose());
     _camera?.dispose();
     // The modules are process-wide and deliberately outlive this screen — see
     // LivenessModel. Destroying them here is what made every visit reload them.
@@ -765,9 +915,11 @@ class _LivenessPageState extends State<LivenessPage>
         ? p.success
         : (_hasResult && _isSpoof ? p.danger : p.ink);
 
-    // Verdict states close the ring; collection fills it frame by frame.
-    final double progress =
-        (_isNavigating || (_hasResult && _isSpoof)) ? 1.0 : _clipProgress;
+    // Verdict states close the ring; collection fills it frame by frame, and
+    // during the challenges it counts prompts instead.
+    final double progress = (_isNavigating || (_hasResult && _isSpoof))
+        ? 1.0
+        : (_inChallenge ? (_challenge?.progress ?? 0) : _clipProgress);
 
     return SizedBox(
       width: boxD,
@@ -900,6 +1052,12 @@ class _LivenessPageState extends State<LivenessPage>
         _modelLoaded &&
         _cameraReady;
 
+    // During the challenges the same slot carries the shared clock — it is
+    // the only thing standing between the user and a failed check.
+    final String counter = _inChallenge
+        ? '${_challenge?.remaining.inSeconds ?? 0}s left'
+        : '${_framesCollected.toString().padLeft(2, '0')} / $_clipFrames';
+
     return FadeRise(
       delay: const Duration(milliseconds: 120),
       child: Column(
@@ -925,12 +1083,17 @@ class _LivenessPageState extends State<LivenessPage>
               ),
               const Spacer(),
               AnimatedOpacity(
-                opacity: showCounter ? 1 : 0,
+                opacity: showCounter || _inChallenge ? 1 : 0,
                 duration: Motion.fast,
                 child: Text(
-                  '${_framesCollected.toString().padLeft(2, '0')} / $_clipFrames',
+                  counter,
                   style: t.labelSmall?.copyWith(
-                    color: p.textGhost,
+                    // The clock goes red for the last five seconds. It is the
+                    // only warning the user gets before a one-attempt fail.
+                    color: _inChallenge &&
+                            (_challenge?.remaining.inSeconds ?? 99) <= 5
+                        ? p.danger
+                        : p.textGhost,
                     fontFeatures: AppTheme.tabular,
                   ),
                 ),
@@ -985,6 +1148,7 @@ class _LivenessPageState extends State<LivenessPage>
         working: true,
       );
     }
+    if (_inChallenge) return _challengeStatus(p);
     if (_isEscalating) {
       return (
         state: 'SECOND OPINION',
@@ -1041,6 +1205,54 @@ class _LivenessPageState extends State<LivenessPage>
       detail: 'Move a little — ${_elapsedSeconds.toStringAsFixed(1)}s recorded',
       tone: p.ink,
       working: false,
+    );
+  }
+
+  /// The challenge stage speaks in instructions rather than status: the user
+  /// has one attempt and a shared clock, so the prompt is the whole screen.
+  ({String state, String title, String detail, Color tone, bool working})
+      _challengeStatus(AppPalette p) {
+    final stage = _challenge;
+    if (stage == null || stage.isComplete) {
+      return (
+        state: 'CHALLENGE',
+        title: 'Getting ready',
+        detail: 'Centre your face in the circle',
+        tone: p.textSecondary,
+        working: true,
+      );
+    }
+
+    // An acknowledgement outranks the next prompt for a beat, so completing
+    // one reads as progress rather than as the screen jumping. The final
+    // prompt never lands here: finishing the sequence leaves the challenge
+    // phase in the same tick, and the scan's own status takes over.
+    if (_justPassed != null) {
+      return (
+        state: 'CHALLENGE ${stage.completed} / ${stage.total}',
+        title: 'Good',
+        detail: 'Next: ${stage.current.prompt.toLowerCase()}',
+        tone: p.success,
+        working: false,
+      );
+    }
+
+    if (_framingNote != null) {
+      return (
+        state: 'CHALLENGE ${stage.completed + 1} / ${stage.total}',
+        title: stage.current.prompt,
+        detail: '$_framingNote — the clock is still running',
+        tone: p.danger,
+        working: true,
+      );
+    }
+
+    return (
+      state: 'CHALLENGE ${stage.completed + 1} / ${stage.total}',
+      title: stage.current.prompt,
+      detail: stage.current.hint,
+      tone: p.ink,
+      working: true,
     );
   }
 }

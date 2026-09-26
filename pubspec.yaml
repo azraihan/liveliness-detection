@@ -21,6 +21,7 @@ dependencies:
   # Remembers the backend URL and key, which change whenever the Kaggle
   # notebook behind the ngrok tunnel restarts.
   shared_preferences: ^2.2.3
+  google_mlkit_face_detection: ^0.14.0
 
 dev_dependencies:
   flutter_test:

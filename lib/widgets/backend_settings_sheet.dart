@@ -5,7 +5,7 @@ import '../services/deepfake_api.dart';
 import '../theme/app_theme.dart';
 import 'app_button.dart';
 
-/// Where the stage-2 backend URL and key are edited.
+/// Where the stage-3 backend URL and key are edited.
 ///
 /// This exists because the URL is not stable: the ensemble runs in a Kaggle
 /// notebook behind a free ngrok tunnel, and every restart hands out a new
@@ -64,7 +64,7 @@ class _BackendSettingsSheetState extends State<BackendSettingsSheet> {
       setState(() {
         _testing = false;
         _ok = true;
-        _result = 'Saved with no URL — stage 2 is off, checks stay on-device';
+        _result = 'Saved with no URL — stage 3 is off, checks stay on-device';
       });
       return;
     }
@@ -188,7 +188,7 @@ class _BackendSettingsSheetState extends State<BackendSettingsSheet> {
             const SizedBox(height: Space.sm),
             Center(
               child: Text(
-                'Clearing the URL turns stage 2 off entirely.',
+                'Clearing the URL turns stage 3 off entirely.',
                 style: t.bodyMedium?.copyWith(
                   color: p.textGhost,
                   fontSize: 12,

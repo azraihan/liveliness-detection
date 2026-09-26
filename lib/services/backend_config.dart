@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Where stage 2 lives: the base URL and API key of the deepfake ensemble.
+/// Where stage 3 lives: the base URL and API key of the deepfake ensemble.
 ///
 /// The backend is a FastAPI server inside a Kaggle notebook, published through
 /// a free ngrok tunnel, so **the URL changes every time that notebook
@@ -30,7 +30,7 @@ class BackendConfig extends ChangeNotifier {
   String get baseUrl => _baseUrl;
   String get apiKey => _apiKey;
 
-  /// False once someone clears the URL, which is the way to turn stage 2 off.
+  /// False once someone clears the URL, which is the way to turn stage 3 off.
   bool get isConfigured => _baseUrl.isNotEmpty;
 
   Future<void> load() async {

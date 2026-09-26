@@ -50,16 +50,16 @@ class TorchModule {
   }
 }
 
-/// The on-device half of the two-stage pipeline.
+/// The two TorchScript models in the pipeline.
 ///
-/// Stage 1 is [mobilenetV2], run once per frame. Stage 2 is the deepfake
-/// ensemble behind `DeepfakeApi`, reached only when stage 1 is not unanimous.
+/// Stage 2 is [mobilenetV2], run once per frame. Stage 3 is the deepfake
+/// ensemble behind `DeepfakeApi`, reached only when stage 2 is not unanimous.
 class LivenessModel {
   LivenessModel._();
 
   static final LivenessModel instance = LivenessModel._();
 
-  /// **Stage 1.** SpoofNet: MobileNetV2 features plus a small conv head.
+  /// **Stage 2.** SpoofNet: MobileNetV2 features plus a small conv head.
   /// Input `[1, 3, 224, 224]`, RGB, ImageNet-normalised. Output `[1, 1]`,
   /// already through a sigmoid in the graph, and it is **P(real)** — not
   /// P(spoof). No softmax or inversion on this side.
@@ -68,7 +68,7 @@ class LivenessModel {
     fileName: 'mobilenetv2_mobile.ptl',
   );
 
-  /// The temporal model that used to be stage 1: a 24-frame clip in one pass,
+  /// The temporal model that used to be stage 2: a 24-frame clip in one pass,
   /// `[1, 24, 3, 224, 224]` to `[1, 2]` logits. Out of the live pipeline but
   /// kept loadable so the two can still be compared side by side for the
   /// report. Nothing calls `load()` on it today.

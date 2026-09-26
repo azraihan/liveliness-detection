@@ -75,7 +75,7 @@ class BackendHealth {
   });
 }
 
-/// Client for the stage-2 deepfake ensemble. Three calls, no state.
+/// Client for the stage-3 deepfake ensemble. Three calls, no state.
 abstract final class DeepfakeApi {
   static const Duration _healthTimeout = Duration(seconds: 12);
 

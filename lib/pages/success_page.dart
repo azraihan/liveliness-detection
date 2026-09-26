@@ -9,7 +9,7 @@ class SuccessPage extends StatefulWidget {
   /// whichever stage decided it.
   final double confidence;
 
-  /// The ensemble's router class when stage 2 made the call, `null` when the
+  /// The ensemble's router class when stage 3 made the call, `null` when the
   /// on-device model settled it alone. The receipt has to say which, because
   /// "processed on device" stops being true the moment a frame is uploaded.
   final String? routedTo;
