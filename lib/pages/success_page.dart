@@ -5,10 +5,18 @@ import '../widgets/app_button.dart';
 import '../widgets/fade_rise.dart';
 
 class SuccessPage extends StatefulWidget {
-  /// Softmax probability that the clip showed a real face, 0–1.
+  /// Probability that the clip showed a real face, 0–1, on the scale of
+  /// whichever stage decided it.
   final double confidence;
 
-  const SuccessPage({super.key, this.confidence = 0});
+  /// The ensemble's router class when stage 2 made the call, `null` when the
+  /// on-device model settled it alone. The receipt has to say which, because
+  /// "processed on device" stops being true the moment a frame is uploaded.
+  final String? routedTo;
+
+  const SuccessPage({super.key, this.confidence = 0, this.routedTo});
+
+  bool get verifiedOnDevice => routedTo == null;
 
   @override
   State<SuccessPage> createState() => _SuccessPageState();
@@ -133,7 +141,10 @@ class _SuccessPageState extends State<SuccessPage>
         ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 300),
           child: Text(
-            'A live face was confirmed on this device.',
+            widget.verifiedOnDevice
+                ? 'A live face was confirmed on this device.'
+                : 'The on-device frames disagreed, so one was checked '
+                    'by the deepfake ensemble. It came back live.',
             textAlign: TextAlign.center,
             style: t.bodyLarge,
           ),
@@ -158,7 +169,17 @@ class _SuccessPageState extends State<SuccessPage>
               : '—',
         ),
         Divider(color: p.borderSubtle),
-        const _ReceiptRow(label: 'Processed', value: 'On device'),
+        _ReceiptRow(
+          label: 'Decided by',
+          value: widget.verifiedOnDevice
+              ? 'MobileNetV2 · on device'
+              : 'Ensemble · ${widget.routedTo}',
+        ),
+        Divider(color: p.borderSubtle),
+        _ReceiptRow(
+          label: 'Processed',
+          value: widget.verifiedOnDevice ? 'On device' : 'One frame uploaded',
+        ),
         Divider(color: p.borderSubtle),
       ],
     );

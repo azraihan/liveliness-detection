@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'pages/landing_page.dart';
+import 'services/backend_config.dart';
 import 'services/liveness_model.dart';
 import 'theme/app_theme.dart';
 import 'theme/theme_controller.dart';
@@ -11,9 +12,13 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
 
-  // Start loading the model now, in the background, so it is ready by the time
-  // the user has read the landing screen. Deliberately not awaited — the UI
-  // must not wait on it.
+  // A single preference read. Awaited so the settings sheet and stage 2 never
+  // see the compiled-in defaults after the user has overridden them.
+  await BackendConfig.instance.load();
+
+  // Start loading the stage-1 model now, in the background, so it is ready by
+  // the time the user has read the landing screen. Deliberately not awaited —
+  // the UI must not wait on it.
   unawaited(LivenessModel.instance.load());
 
   runApp(const FaceLivenessApp());

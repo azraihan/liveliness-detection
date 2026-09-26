@@ -3,6 +3,7 @@ import '../painters/scan_ring_painter.dart';
 import '../theme/app_theme.dart';
 import '../widgets/animated_label.dart';
 import '../widgets/app_button.dart';
+import '../widgets/backend_settings_sheet.dart';
 import '../widgets/fade_rise.dart';
 import '../widgets/theme_toggle.dart';
 import 'liveness_page.dart';
@@ -112,10 +113,28 @@ class _LandingPageState extends State<LandingPage>
             ),
           ],
         ),
-        const FadeRise(
+        FadeRise(
           offset: 0,
-          delay: Duration(milliseconds: 260),
-          child: ThemeToggle(),
+          delay: const Duration(milliseconds: 260),
+          child: Row(
+            children: [
+              Semantics(
+                button: true,
+                label: 'Second-opinion server settings',
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => BackendSettingsSheet.show(context),
+                  child: SizedBox(
+                    width: 44,
+                    height: 44,
+                    child: Icon(Icons.tune,
+                        size: 18, color: p.textTertiary),
+                  ),
+                ),
+              ),
+              const ThemeToggle(),
+            ],
+          ),
         ),
       ],
     );
@@ -154,7 +173,8 @@ class _LandingPageState extends State<LandingPage>
           constraints: const BoxConstraints(maxWidth: 320),
           child: Text(
             'Your camera confirms a real person is present. '
-            'Nothing leaves the device.',
+            'The check runs on this device; only an unclear result '
+            'is sent on for a second opinion.',
             style: t.bodyLarge,
           ),
         ),
@@ -203,7 +223,7 @@ class _LandingPageState extends State<LandingPage>
         const SizedBox(height: Space.md),
         Center(
           child: Text(
-            'Takes about 15 seconds · On-device',
+            'Takes about 15 seconds · On-device first',
             style: t.bodyMedium?.copyWith(
               color: p.textTertiary,
               fontSize: 12,

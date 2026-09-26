@@ -13,6 +13,14 @@ dependencies:
   cupertino_icons: ^1.0.6
   flutter_pytorch_lite: ^0.1.0+3
   http: ^1.2.0
+  # Sets the multipart part type on the stage-2 upload. Already a transitive
+  # dependency of http; named here because we import it directly.
+  http_parser: ^4.0.2
+  # JPEG-encodes the frame sent to the stage-2 backend.
+  image: ^4.1.7
+  # Remembers the backend URL and key, which change whenever the Kaggle
+  # notebook behind the ngrok tunnel restarts.
+  shared_preferences: ^2.2.3
 
 dev_dependencies:
   flutter_test:
