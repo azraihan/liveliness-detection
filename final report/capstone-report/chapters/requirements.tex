@@ -128,19 +128,29 @@ Risk-based layered cascade & 5 & 4 & 4 & 4 & 3 \\
 \end{tabular}
 \end{table}
 
-The selected target is the layered cascade in \Cref{fig:pipeline}. It keeps the
-integrated mobile temporal model as the first analytical layer, proposes capture
-integrity and quality checks before it, and escalates only according to calibrated
-policy. Candidate second-layer evidence includes $G^2V^2$former, GD-FAS, a
-universal Xception model, or the specialist router. Their outputs are not
-interchangeable: they should be calibrated, tested for complementary error, and
-fused only after a common protocol. Human review is reserved for unresolved cases
-and is a governed fallback, not proof that automation is safe.
+The selected and deployed design is the two-stage system in \Cref{fig:pipeline}.
+A Google ML Kit liveness challenge (blink, turn, smile) gates capture on-device;
+a passing clip is scored locally by the MobileNetV3 spoof classifier while the
+same frame is uploaded in parallel to the server, where a six-way router selects
+one of five Xception manipulation specialists. The session is accepted only when
+both verdicts agree the face is real (\Cref{tab:verification-logic}); either
+stage failing routes to a flagged/retry state rather than a silent pass, and
+flagged cases are intended to feed a human-review queue whose interface is not
+yet built. This is a simpler, evaluated instance of the calibrated cascade
+formulated in Chapter~1: it uses a hard AND rule rather than confidence bands,
+and it uses the Xception router as its second-layer evidence rather than
+$G^2V^2$former or GD-FAS, which remain candidate alternatives evaluated
+separately (Chapter~5) but not wired into this call path. Their outputs are not
+interchangeable with the router's: any future substitution or fusion should be
+calibrated and tested for complementary error under a common protocol before
+replacing the deployed second stage.
 
 \begin{figure}[H]
   \centering
-  \resizebox{\textwidth}{!}{\input{figures/pipeline}}
-  \caption{Layered system boundary. Green identifies the integrated prototype;
-  orange identifies target-design elements that are not yet end-to-end.}
+  \includegraphics[width=0.92\textwidth]{architecture-pipeline.jpg}
+  \caption{Deployed two-stage verification pipeline. Steps 1--2 run on-device;
+  step 3 is the server-side router-and-specialist call; step 4 is the AND
+  decision described in \Cref{tab:verification-logic}. The dashed retry loop and
+  the human-review box are the only elements not evaluated end to end.}
   \label{fig:pipeline}
 \end{figure}

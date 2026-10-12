@@ -48,6 +48,7 @@ point. ISO/IEC 30107-3 reporting should be followed for a formal PAD evaluation
 \section{Performance Evaluation}
 
 \subsection{Temporal and domain-generalisation results}
+\label{sec:transfer-failure}
 
 \Cref{tab:transfer-results} gives the results reproduced across the current plan
 and inspected experiment artefacts. Values are percentages. The source-only
@@ -89,20 +90,175 @@ together.
 An earlier ROSE-Youtu MobileNetV3 temporal experiment recorded 98.46\% accuracy,
 99.88\% AUC, 1.39\% EER, and 1.36\% HTER. It is retained as evidence that the
 lightweight temporal approach can perform strongly on the earlier physical-PAD
-protocol. It must not be attributed to the current 24-frame exported checkpoint
-until its training provenance is reconciled, and it does not establish deepfake
-or injection robustness.
+protocol, but it predates the exported mobile checkpoint and must not be quoted
+as that checkpoint's performance.
+
+Before the numerical-stability fix described in Section~\ref{ch:design}, the
+project's earlier G$^2$V$^2$former-based prototype was evaluated on the 342-video
+LCC-FASD development split (300 spoof, 42 live), giving 72.8\% accuracy, 80.5\%
+ROC-AUC, and 26.6\% HTER at an equal-error threshold of 0.239.
+\Cref{fig:prelim-confusion,fig:prelim-roc} show the resulting confusion matrix
+and score distribution: 81 of 300 spoof samples were accepted as live, which the
+earlier report itself judged unacceptable for a security-critical deployment.
+This result is retained as the honest starting point of the project rather than
+omitted; the subsequent scatter-mean/clamping fix and 20-epoch fine-tuning run
+discussed below improved on it, and the separate MobileNetV3 screening stage
+discussed next improved on it further.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.7\textwidth]{confusionMatrix.png}
+  \caption{Confusion matrix from the preliminary, pre-fix prototype. The
+  81-sample spoof-accepted-as-live cell is the principal security concern that
+  motivated the extended fine-tuning run below.}
+  \label{fig:prelim-confusion}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{roc-score.png}
+  \caption{ROC curve and score distribution for the same preliminary run. Live
+  samples generally score higher, but substantial class overlap drives the
+  false-acceptance rate above.}
+  \label{fig:prelim-roc}
+\end{figure}
+
+The deployed on-device screening stage is a separate model (MobileNetV3 adapted
+from STDL-FacePAD, Section~2.1) and was evaluated independently on the LCC-FASD
+test split (7,580 clips), giving 93.8\% accuracy and 0.969 ROC-AUC. The two
+results should not be conflated: the figures immediately above describe the
+G$^2$V$^2$former-based Layer-2 candidate on 342 development videos, while this
+figure describes the deployed Layer-1 MobileNetV3 classifier on a larger,
+separately constructed clip-level test set.
+This is the figure attributable to the shipped Flutter/PyTorch~Lite artefact;
+the ROSE-Youtu number above remains a separate, earlier-protocol result and the
+two must not be averaged or substituted for one another. The training-script/
+export sequence-length note in \Cref{tab:reqs} still applies: report the exact
+checkpoint hash and frame count alongside this figure before final submission.
+
+\subsection{Latency}
+
+\Cref{tab:latency} reports measured per-frame latency for the FaceForensics++
+router-and-specialist path across the environments actually benchmarked. Figures
+are milliseconds per verification frame, lower is better.
+
+\begin{table}[H]
+\centering
+\caption{Measured latency by execution environment, router-plus-specialist path
+(ms/frame).}
+\label{tab:latency}
+\begin{tabular}{@{}llr@{}}
+\toprule
+Stage / environment & Configuration & Latency (ms) \\
+\midrule
+On-device (mobile) & ML Kit face tracking + MobileNetV3 & $\approx$150 \\
+Server, CPU & router + one specialist & 367 \\
+Server, T4 GPU & all seven Xception models (naive) & 50.9 \\
+Server, T4 GPU & router + one specialist (routed) & 14.6 \\
+Server, T4 GPU & router only, real-frame fast path & 7.3 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Two conclusions follow. First, GPU-served routing is materially faster than
+evaluating every specialist: 14.6~ms against 50.9~ms, a 3.5$\times$ reduction,
+because only the router and the one selected expert run per frame instead of
+all five. Second, the server path is only worth its network round trip when GPU
+serving is available---the CPU figure (367~ms) is close to two orders of
+magnitude slower than the routed GPU path, which is why the server stage should
+not be assumed interchangeable across hosting tiers without re-measuring. These
+figures were obtained on the deployed FastAPI/ngrok endpoint described in
+Section~\ref{ch:design} rather than in a research notebook, so they are closer
+to serving conditions than the $G^2V^2$former pilot below, though still a
+single-host measurement rather than a load-tested service-level guarantee.
 
 The inspected $G^2V^2$former latency pilot used five runs on an NVIDIA T4 and
 reported a mean of 1,315.45 ms per video end-to-end, of which 134.56 ms was model
 inference. The small run count and cloud GPU environment make this a diagnostic,
 not a production latency guarantee. The difference between total and model time
-also shows that face/landmark preprocessing and data handling deserve optimisation.
+also shows that face/landmark preprocessing and data handling deserve
+optimisation, and it explains why the deployed second stage in
+\Cref{tab:latency} uses the Xception router path rather than $G^2V^2$former.
 
-\draftnote{The latest prior PDF mentions a best $G^2V^2$former HTER of 21.71\%,
-whereas the common-protocol table and inspected artefacts contain 22.38\% (and
-another checkpoint value of 24.07\%). Select the final checkpoint by a declared
-rule and regenerate the table before submission.}
+The 21.71\% figure quoted in the earlier project paper and the 22.38\% figure in
+\Cref{tab:transfer-results} are reconciled as two different runs rather than a
+discrepancy to resolve by rerunning. The earlier paper reports an LCC-FASD-only
+extended fine-tuning run of 20 epochs after the numerical-stability fix
+described in Section~\ref{ch:design}: HTER fell from a 26.6\% preliminary-prototype
+baseline to a best-epoch value of 21.71\%, but continued to fluctuate rather than
+converge (final-epoch HTER 30.98\%), which that paper attributes to LCC-FASD's
+small training partition (992 videos). \Cref{fig:g2v2-epochs} plots this run.
+\Cref{tab:transfer-results} instead reports one checkpoint selected under the
+later common protocol used to compare $G^2V^2$former with GD-FAS, so that both
+models are read at a consistently defined stage rather than each at its own
+single best epoch; 22.38\% is therefore the fairer number for the
+cross-model comparison in this report, and 21.71\% remains the lower bound the
+architecture reached before common-protocol checkpoint selection was adopted.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{g2v2former_epoch20.png}
+  \caption{HTER and AUC per fine-tuning epoch on the in-domain LCC-FASD split
+  and the held-out Celeb-DF-v2 deepfake benchmark, with the resulting
+  generalisation gap below. The gap averages approximately 30 points of HTER and
+  over 40 points of AUC and does not close with further training. Source: the
+  project's earlier temporal-detection paper.}
+  \label{fig:g2v2-epochs}
+\end{figure}
+
+That earlier zero-shot run offers a more detailed account of the transfer
+failure than a single-epoch number can: across all 20 epochs, Celeb-DF-v2 HTER
+stayed in the 55--62\% range and its AUC was almost entirely below the 50\%
+chance level, with one exception epoch reaching 48.53\% HTER that coincided with
+the run's best in-domain checkpoint rather than showing a stable trend. The
+paper's own explanation is that presentation attacks are physical re-capture
+artefacts---moir\'e interference, specular reflection, reduced dynamic
+range, geometric planarity---which are exactly the local photometric and
+pseudo-3D cues $G^2V^2$former's visual and landmark streams are built to detect,
+whereas deepfakes are digital generation-side artefacts (blending-boundary
+inconsistency, generator frequency fingerprints, independent-frame temporal
+flicker) that the architecture, as trained here, has no explicit mechanism to
+detect. That explanation is retained in this report as the working hypothesis
+for the domain gap, not as a claim independently verified beyond the cited run.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{g2v2former-attention.png}
+  \caption{Spatial and temporal attention on a live face video (a) versus a 3D
+  mask presentation attack (b): attention concentrates on mask edges and
+  texture, the exact physical re-capture cues discussed above. This is direct
+  evidence of what the model has learned to look for, and why that evidence is
+  the wrong kind for a digital deepfake, which has no mask edge to attend to.
+  Derived from \cite{yang2024g2v2} using the attention-relevance method of
+  Chefer et al. (c).}
+  \label{fig:g2v2-attention}
+\end{figure}
+
+GD-FAS's own mechanism is informative for the same reason. \Cref{fig:gdfas-internals}
+shows how its group-wise scaling and Gram-Schmidt orthogonal decomposition align
+classifier weights and biases \emph{across the presentation-attack source
+domains it is trained on}: it explicitly targets known domain shift (camera,
+lighting, subject population) within one attack family, not shift to a
+different attack family. That is consistent with \Cref{tab:transfer-results}:
+GD-FAS's in-domain LCC-FASD result is the strongest of any model in this report,
+but its zero-shot Celeb-DF-v2 result is close to chance, because the mechanism
+in \Cref{fig:gdfas-internals} has nothing to align against a domain it never
+saw during training. Both architectures, in short, are only as broad as the
+attack family they were trained on; neither generalises to an attack family
+its training data and loss function were not built to represent.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{gdfas-internals.png}
+  \caption{How GD-FAS aligns decision boundaries across its presentation-attack
+  source domains: Group-wise Scaling Loss balances per-domain learning scale
+  (left), the Gram-Schmidt process projects live/spoof and domain
+  invariant/specific directions (centre), and Feature Orthogonal Decomposition
+  pulls invariant features together while pushing domain-specific features
+  apart (right). Nothing here references a domain outside the training set.
+  Reproduced from \cite{jung2025gdfas}.}
+  \label{fig:gdfas-internals}
+\end{figure}
 
 \subsection{Universal and routed Xception results}
 

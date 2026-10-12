@@ -35,6 +35,35 @@ Deepfake attacks are difficult for several connected reasons:
   \item mobile inference restricts model size, memory, energy, and response time.
 \end{itemize}
 
+This is not a hypothetical threat model: industry threat-intelligence
+monitoring of face-biometric KYC systems has recorded face-swap and
+digital-injection attacks growing as separate, independently accelerating
+categories rather than variants of the same print/replay problem
+\cite{iproov2025threat}, which is exactly why \Cref{fig:taxonomy} keeps
+delivery path and manipulation family on separate axes instead of one severity
+scale, and why capture-channel assurance (Section~4.5) is tracked as a
+requirement distinct from classification accuracy: no amount of accuracy on a
+presented frame defends against media that never passed through the physical
+camera at all. It is specifically the growth in face-swap and
+reenactment attacks---rather than print or replay---that motivates giving the
+system a dedicated digital-manipulation layer at all: an on-device
+presentation-attack screen (Layer 1) has no mechanism to see this class of
+attack, since a face swap presents a geometrically and temporally plausible
+live capture. Layer 2 (Section~4.1) closes exactly this gap by routing every
+frame that Layer 1 accepts to a manipulation-specific Xception specialist; the
+per-method results in \Cref{tab:routing-method} show that this routed check
+raises fake-class detection on the hardest evaluated method (NeuralTextures)
+from a near-chance 72.66\% to 76.11\% balanced accuracy under a universal
+detector, and above 85\% for the four identity-swap and reenactment methods
+closest to a real face-swap attack. Because \Cref{tab:verification-logic}
+requires both layers to agree, a face swap that fools the on-device screen must
+still pass Layer 2's specialist check to be accepted, which is the strict,
+conjunctive sense in which Layer 2 constrains the system's exposure to this
+growing attack class---strict within the scope this report can actually claim,
+since Section~5.2 still limits that claim to the in-domain, group-disjoint FF++
+evaluation and not to unseen generators or the injection attacks discussed
+above.
+
 The attack must consequently be described along more than one axis.
 \Cref{fig:taxonomy} distinguishes the delivery path from the manipulation family.
 The five FaceForensics++-derived experimental fake classes are not five equivalent
@@ -50,6 +79,38 @@ genuine data and is not a manipulation class.
   family are separate: the same generated video may be shown to a camera or
   injected directly. Items outside the experiment remain relevant threats.}
   \label{fig:taxonomy}
+\end{figure}
+
+\Cref{fig:attack-samples} shows one captured or sourced example of each of the
+three delivery paths actually exercised while building and testing the
+prototype: a printed photograph held in front of the camera, a video replayed
+on a second screen, and a face-swapped frame paired with its genuine source.
+All three defeat a plain single-frame camera check, which is why the taxonomy
+in \Cref{fig:taxonomy} treats delivery path and manipulation family as separate
+axes rather than a single attack label.
+
+\begin{figure}[H]
+  \centering
+  \begin{minipage}{0.32\linewidth}
+    \centering
+    \includegraphics[width=\linewidth]{print-attack.jpg}\\
+    \small (a) Print attack
+  \end{minipage}\hfill
+  \begin{minipage}{0.32\linewidth}
+    \centering
+    \includegraphics[width=\linewidth]{replay-attack.jpg}\\
+    \small (b) Replay attack
+  \end{minipage}\hfill
+  \begin{minipage}{0.32\linewidth}
+    \centering
+    \includegraphics[width=\linewidth]{deepfake-attack.jpg}\\
+    \small (c) Deepfake (identity swap)
+  \end{minipage}
+  \caption{Sample attacks along each delivery path. (a) A printed photograph
+  held up to the camera. (b) A video replayed on a second screen, captured by
+  the verifying device. (c) A genuine frame (left) and a face-swapped frame
+  (right) of the same clip; the swap is convincing in a single frame.}
+  \label{fig:attack-samples}
 \end{figure}
 
 \section{Problem Statement}
@@ -99,59 +160,150 @@ use a six-way original-plus-method classifier and an original-route fallback.
 They are therefore reported as a legacy six-way routing result and not as a
 completed implementation of the intended equations.
 
-\section{Complexity of the Problem}
-
-The project qualifies as a complex engineering problem because its requirements
-conflict and its operating conditions are only partially observable. Important
-dimensions are summarised in \Cref{tab:complexity}.
+Formulated in engineering terms:
 
 \begin{table}[H]
 \centering
-\caption{Sources of engineering complexity.}
-\label{tab:complexity}
-\begin{tabularx}{\textwidth}{@{}p{32mm}Y Y@{}}
+\caption{The problem stated in engineering terms.}
+\label{tab:engineering-terms}
+\begin{tabularx}{\textwidth}{@{}p{32mm}Y@{}}
 \toprule
-Dimension & Conflict or uncertainty & Engineering implication \\
+Element & Specification \\
 \midrule
-Attack diversity & Prints, replay, reenactment, face swap, recapture, and
-injection expose different signals. & No single benchmark or cue demonstrates
-complete protection. \\
-Domain shift & Dataset, camera, subject, codec, and generator differ from the
-deployment domain. & Group-disjoint and cross-domain evaluation are mandatory. \\
-Edge constraints & Larger temporal models may improve evidence but increase
-latency, memory, energy, and network use. & Use a lightweight local stage and
-selective escalation. \\
-Decision cost & False accepts create fraud risk; false rejects create exclusion
-and support cost. & Calibrate thresholds against operational costs and provide
-retry/appeal paths. \\
-Biometric sensitivity & Face data is difficult to revoke and may reveal identity
-or demographic attributes. & Minimise collection, secure transit and storage,
-and define retention and access controls. \\
-Adversarial evolution & Attackers can adapt after learning detector behaviour. &
-Monitor drift, limit disclosure of exploitable details, and retest continuously. \\
+Inputs & A short front-camera facial clip captured on a mobile device; a single
+preprocessed face frame for the manipulation-specialist experiment; deployment-time
+policy thresholds $\tau_{\mathrm{pass}},\tau_{\mathrm{attack}}$ (target-state) \\
+Outputs & A fake probability and a thresholded real/fake decision for the mobile
+clip; a routed fake probability per frame for the specialist experiment;
+target-state: a calibrated PASS/FAIL/REVIEW decision with a reason code \\
+Entities & Applicant, capture session, video frame, facial landmark, manipulation
+method, binary specialist, meta-router, model checkpoint, reviewer (proposed) \\
+Quantities guaranteed & None formally guaranteed by the current prototype;
+local mobile inference completes without a network dependency; validation for
+the FF++ routing experiment is disjoint at the source-video group level \\
+Quantities optimised & Balanced accuracy, ROC-AUC, average precision, and
+class-conditional real/fake accuracy for the routing experiment; HTER, APCER, and
+BPCER for the physical-versus-digital transfer study; mobile latency and model
+footprint \\
+Assumptions & Genuine capture originates from the device's physical camera, since
+no capture-channel assurance is implemented; public benchmark datasets
+approximate the deployment population and attack distribution; one frame carries
+enough evidence for the manipulation-specialist routing decision \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Complexity of the Problem}
+
+A complex engineering problem must have characteristic P1 and some or all of
+P2--P7. P1 requires in-depth knowledge at the level of one or more
+of the knowledge profiles K3--K6 and K8 listed in \Cref{tab:knowledge-profiles}.
+\Cref{tab:p1p7} records project-specific evidence for each characteristic.
+
+\begin{table}[H]
+\centering
+\caption{Complex engineering problem characteristics (P1--P7) and evidence from
+this project.}
+\label{tab:p1p7}
+\begin{tabularx}{\textwidth}{@{}p{9mm}p{30mm}Y@{}}
+\toprule
+Code & Definition & Evidence from this project \\
+\midrule
+P1 & \textbf{Depth of knowledge required.} Cannot be resolved without in-depth
+engineering knowledge at the level of one or more of K3, K4, K5, K6, or K8. &
+\textbf{K3, K4, K5, K6, K8.} K3: probability and statistics underlying the
+HTER/APCER/BPCER and ROC-AUC metrics used throughout Chapter~5. K4: deep-learning
+specialist knowledge spanning convolutional backbones (Xception, MobileNetV3),
+graph-guided temporal attention ($G^2V^2$former), and domain-generalisation theory
+(GD-FAS), Section~2.1. K5: knowledge supporting the design of the layered
+mobile--server cascade, Section~4.1. K6: current practice in mobile-model export
+and biometric-security guidance (ISO/IEC~30107-3, NIST~SP~800-63A-4), Chapter~3.
+K8: engagement with the FaceForensics++, Celeb-DF-v2, $G^2V^2$former, and GD-FAS
+research literature, Section~2.1. \\
+P2 & \textbf{Range of conflicting requirements.} Involves wide-ranging or
+conflicting technical, engineering, and other issues. & Security against both
+attack families versus low user friction; mobile latency and memory versus model
+capacity; per-manipulation specialisation versus generalisation to unseen
+generators; on-device privacy versus stronger server-side analysis. Each is
+addressed explicitly in Section~3.3 and Chapter~4. \\
+P3 & \textbf{Depth of analysis required.} Has no obvious solution and requires
+abstract thinking and originality in analysis to formulate suitable models. & No
+single detector transfers across physical presentation attacks and digital
+manipulation attacks (\Cref{tab:transfer-results}); interpreting why
+source-domain-strong models collapse under this shift, and formulating the
+embedding-conditioned routing hypothesis, required original analysis
+(Section~4.2.3). \\
+P4 & \textbf{Familiarity of issues.} Involves infrequently encountered issues. &
+Unseen-generator generalisation, a capture channel bypassing the physical sensor
+via injection, numerical instability in attention-guided temporal training (the
+$G^2V^2$former fix, Section~4.2), and leakage-safe best-expert labelling for the
+router (Section~4.2.3) are all non-routine. \\
+P5 & \textbf{Extent of applicable codes.} Is outside problems encompassed by
+standards and codes of practice for professional engineering. & ISO/IEC~30107-3
+defines PAD testing but explicitly excludes injection outside the capture device
+(Section~3.2); NIST~SP~800-63A-4 and ENISA guidance address part of that gap but
+are not binding Bangladeshi law. The project therefore defines its own
+Implemented/Experimental/Proposed status labels where no code fully specifies
+digital-deepfake or injection defence. \\
+P6 & \textbf{Extent of stakeholder involvement and conflicting requirements.}
+Involves diverse groups of stakeholders with widely varying needs. & Applicants,
+the financial-service provider that proposed the problem, fraud reviewers,
+regulators, and developers hold differing and sometimes conflicting views on
+security strictness, onboarding friction, and privacy (Section~6.2,
+Section~6.3). \\
+P7 & \textbf{Interdependence.} Is a high-level problem including many component
+parts or sub-problems. & Capture and preprocessing, mobile temporal screening,
+richer temporal and domain-generalised server candidates, manipulation-specific
+routing, and governance/review interact through one shared decision policy
+(Section~4.1). \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption{Knowledge profiles referenced by P1.}
+\label{tab:knowledge-profiles}
+\begin{tabularx}{\textwidth}{@{}p{9mm}Y@{}}
+\toprule
+Code & Description \\
+\midrule
+K3 & A systematic, theory-based formulation of engineering fundamentals required
+in the engineering discipline. \\
+K4 & Engineering specialist knowledge that provides theoretical frameworks and
+bodies of knowledge for the accepted practice areas in the engineering
+discipline; much is at the forefront of the discipline. \\
+K5 & Knowledge that supports engineering design in a practice area. \\
+K6 & Knowledge of engineering practice (technology) in the practice areas in the
+engineering discipline. \\
+K8 & Engagement with selected knowledge in the research literature of the
+discipline. \\
 \bottomrule
 \end{tabularx}
 \end{table}
 
 \section{Project Objectives and Scope}
 
-The project objectives are to:
+The project set the following objectives. \Cref{tab:objective-status} evaluates
+the delivered work against each.
 
 \begin{enumerate}
-  \item establish a clear physical-presentation, manipulation, and injection
-        threat model for remote face verification;
-  \item build a lightweight temporal first-stage classifier and integrate its
-        exported model into a Flutter capture flow;
-  \item investigate richer temporal evidence through $G^2V^2$former;
-  \item compare temporal modelling with the GD-FAS domain-generalisation method;
-  \item measure within-domain and cross-domain behaviour on public PAD and
-        deepfake datasets;
-  \item compare a universal Xception detector with manipulation specialists and
-        learned routing;
-  \item specify a layered escalation architecture and the controls needed for
-        trustworthy deployment; and
-  \item analyse privacy, fairness, accessibility, accountability, intellectual
-        property, cost, and environmental impact.
+  \item[\textbf{O1.}] Establish a clear physical-presentation, digital-manipulation,
+        and injection threat model for remote face verification.
+  \item[\textbf{O2.}] Build a lightweight temporal first-stage classifier and
+        integrate its exported model into a Flutter capture flow.
+  \item[\textbf{O3.}] Investigate richer temporal evidence through
+        $G^2V^2$former.
+  \item[\textbf{O4.}] Compare temporal modelling with the GD-FAS
+        domain-generalisation method.
+  \item[\textbf{O5.}] Measure within-domain and cross-domain behaviour on public
+        PAD and deepfake datasets.
+  \item[\textbf{O6.}] Compare a universal Xception detector with
+        manipulation-specific specialists and learned routing.
+  \item[\textbf{O7.}] Specify a layered escalation architecture and the controls
+        needed for trustworthy deployment.
+  \item[\textbf{O8.}] Analyse privacy, fairness, accessibility, accountability,
+        intellectual property, cost, and environmental impact.
 \end{enumerate}
 
 The implemented scope comprises public-data experiments, preprocessing and

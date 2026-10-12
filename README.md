@@ -210,6 +210,28 @@ tool/screenshots_test.dart         # Screenshot harness (not part of the test su
 
 ---
 
+## 📑 Final Report
+
+**[`final report/final_report.pdf`](final%20report/final_report.pdf)** is the
+compiled capstone report — *Leveraging Temporal Information for Robust Liveness
+Verification*, 65 pages, submitted under the title and supervisor on its own
+title page. A copy is also kept in **[`all-reports/final_report.pdf`](all-reports/final_report.pdf)**
+alongside the earlier weekly submissions, as the final entry in that history.
+
+- `final report/capstone-report/` holds the LaTeX source the PDF was compiled
+  from (chapters, frontmatter, figures, `references.bib`) — edit this, not the
+  PDF, for any further changes, then recompile on Overleaf.
+- `final report/REPORT_PLAN.md` is the drafting plan the report was written
+  against: evidence policy, what each chapter must and must not claim, and the
+  current-status audit table used to keep the report honest about what is
+  implemented versus proposed.
+- `all-reports/week-3`, `week-5`, `week-7`, `week-11` are the earlier
+  milestone submissions (proposal, presentation, inception report, system
+  analysis), kept for project history; `final_report.pdf` supersedes them as
+  the authoritative document.
+
+---
+
 ## 🧪 Model Experiments
 
 This repository also includes the liveness/deepfake model experiment folders:

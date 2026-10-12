@@ -1,6 +1,96 @@
 \chapter{System Design and Implementation}
 \label{ch:design}
 
+\section{Data}
+\label{sec:data}
+
+Four datasets were used, one per attack family or generalisation question the
+system is evaluated against. \Cref{tab:dataset-summary} states each dataset's
+size, class balance, and split as recorded directly from the pipeline's own
+run logs, not from the source papers' reported totals, so that every count
+below is reproducible from the repository.
+
+\begin{table}[H]
+\centering
+\caption{Datasets used, with counts taken from the project's own preprocessing
+and training logs.}
+\label{tab:dataset-summary}
+\begin{tabularx}{\textwidth}{@{}p{24mm}p{22mm}Y@{}}
+\toprule
+Dataset & Attack family & Size and split, as run \\
+\midrule
+FaceForensics++ (c23) & Digital manipulation (5 methods) & 600,000 frames
+from 1,000 source-video pair groups; 900 train / 100 val groups; exactly
+90,000 train and 10,000 val frames per class (6 classes: original + 5 fake
+methods) \\
+LCC-FASD & Physical presentation (print/replay) & 992 train videos (133 live,
+859 attack) and 342 test videos (42 live, 300 attack); heavily imbalanced
+toward attack in both splits \\
+Celeb-DF-v2 & Digital manipulation (face swap) & 890 real videos (590
+Celeb-real + 300 YouTube-real) and 5,639 synthesised videos; official test
+protocol lists 518 videos, of which 100 were evaluated; 6,011 videos remain
+after removing the official test list, of which 300 were used for fine-tuning
+(Section~5.1) \\
+Asian-Fakes & Physical presentation, demographic subgroup & 4,610 images:
+1,996 from an Asian subgroup (998 live / 998 attack) and 2,614 from a
+non-Asian subgroup (1,307 live / 1,307 attack); each subgroup is exactly
+class-balanced internally \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.95\textwidth]{dist_ffpp.png}
+  \caption{FaceForensics++ frame distribution by method and split. The
+  extraction pipeline enforces exact balance across all six classes and both
+  splits, so no class-weighting is needed for this dataset.}
+  \label{fig:dist-ffpp}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.72\textwidth]{dist_lccfasd.png}
+  \caption{LCC-FASD videos by class and split. Attack outnumbers live by
+  roughly 6:1 in train and 7:1 in test, which is why training uses
+  class-weighted loss and why accuracy alone would be misleading
+  (Section~5.1.2).}
+  \label{fig:dist-lccfasd}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{dist_celebdf.png}
+  \caption{Celeb-DF-v2: (a) the full public release is itself imbalanced,
+  roughly 6:1 synthetic to real; (b) the subset actually used for evaluation
+  and fine-tuning in this project (Section~5.1) is a small fraction of what is
+  available---100 of 518 official test videos, 300 of 6,011 available training
+  videos---which is a scale limitation this report states explicitly rather
+  than implying full-benchmark evaluation.}
+  \label{fig:dist-celebdf}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.72\textwidth]{dist_asianfakes.png}
+  \caption{Asian-Fakes images by subgroup and class. Each subgroup is
+  internally balanced, which supports a same-scale asian-versus-non-asian
+  comparison, but the two subgroups are unequal in size (1,996 vs 2,614) and
+  the dataset alone cannot establish demographic fairness (Section~6.5.1).}
+  \label{fig:dist-asianfakes}
+\end{figure}
+
+Two limitations follow directly from these distributions rather than from
+model choice. First, LCC-FASD's and Celeb-DF-v2's attack-heavy imbalance means
+a model that always predicts ``attack'' would score misleadingly well on raw
+accuracy; every result in Chapter~5 therefore reports balanced accuracy,
+HTER, or AUC rather than accuracy alone. Second, the Celeb-DF-v2 subsampling in
+\Cref{fig:dist-celebdf}(b) means the cross-dataset results in
+\Cref{tab:transfer-results} describe a 100-video evaluation and a 300-video
+fine-tuning set, not the dataset's full 518-video protocol or its full 6,011
+available training videos; a larger run remains future work
+(Section~5.3).
+
 \section{Functional Design and Sub-problem Partitioning}
 
 The project was partitioned by evidence and operating layer rather than by one
@@ -24,8 +114,54 @@ monolithic model:
 Temporal information appears at multiple levels, illustrated in
 \Cref{fig:temporal-levels}. The lightweight model averages frame embeddings; the
 transformer represents explicit time/landmark relationships; and the target
-decision layer can evaluate score stability across the session. Only the first
-two have experimental artefacts in the repository.
+decision layer can evaluate score stability across the session. The first two
+have experimental artefacts in the repository; the third is target design.
+
+The as-deployed system runs the mobile and server stages as two independent,
+parallel evaluators of the same capture rather than a confidence-banded cascade:
+the on-device MobileNetV3 stage screens for physical presentation attacks while
+the frame is concurrently uploaded to the server-side router-and-specialist path
+for a digital-manipulation check. \Cref{tab:verification-logic} states the
+combination rule. It is a conjunction, not an escalation policy: the session is
+accepted only when both stages independently agree the face is real, and any
+single ``spoof'' or ``fake'' verdict routes the session to a rejected/retry state
+in the application rather than a silent pass. This is simpler than, and
+distinct from, the confidence-band cascade with $\tau_{\mathrm{pass}}$ and
+$\tau_{\mathrm{attack}}$ described in Chapter~1: no calibrated risk band decides
+which cases reach the server, because both stages currently run on every
+session.
+
+\begin{table}[H]
+\centering
+\caption{Combination rule applied to the two independent stage verdicts.}
+\label{tab:verification-logic}
+\begin{tabular}{@{}ccl@{}}
+\toprule
+On-device spoof screen & Server deepfake check & Verdict \\
+\midrule
+Real & Real & Accepted \\
+Spoof & Real & Rejected / flagged \\
+Real & Fake & Rejected / flagged \\
+Spoof & Fake & Rejected / flagged \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.85\textwidth]{verification-logic.jpg}
+  \caption{The same combination rule as \Cref{tab:verification-logic}: each stage
+  contributes an independent real/spoof verdict, and only the all-real
+  combination is accepted.}
+  \label{fig:verification-logic}
+\end{figure}
+
+A rejected/flagged outcome currently terminates in an in-app retry prompt. No
+reviewer console, case queue, or override workflow was found in the repository,
+so the ``human review'' stage in \Cref{fig:pipeline} remains \proposed{}: the
+application produces the flagged state that a review workflow would consume, but
+the workflow itself, and the labelled-data feedback loop that would use its
+outcomes for retraining, are target design rather than implemented artefacts.
 
 \begin{figure}[H]
   \centering
@@ -106,6 +242,67 @@ one possible target is
 where $s_e^{(-f(i))}$ excludes sample $i$'s fold from its training. A deterministic
 tie rule and a policy for examples on which all experts fail are required.
 
+\subsection{Models used, by code artefact}
+
+\Cref{tab:models-used} states, for every model discussed in this report, the
+exact architecture, its configuration as run, and where its implementation
+lives in the repository, so that every number in Chapter~5 is traceable to a
+specific artefact rather than to the reference paper alone.
+
+{\small
+\begin{longtable}{@{}p{24mm}p{36mm}p{28mm}p{28mm}@{}}
+\caption{Models used in this project, their configuration, and their code
+location.}\label{tab:models-used}\\
+\toprule
+Model & Architecture as run & Key configuration & Code artefact \\
+\midrule
+\endfirsthead
+\toprule
+Model & Architecture as run & Key configuration & Code artefact \\
+\midrule
+\endhead
+MobileNetV3 (Layer 1) & STDL-FacePAD pattern: shared MobileNetV3 encoder per
+frame, mean-pooled clip feature, linear head \cite{khan2025stdl} & $K=24$
+frames (export/app); training script records $K=10$ (Section~5.3); 224$\times$224
+RGB, ImageNet normalisation & \texttt{spatio-temporal-mnetv3/}
+(\texttt{train\_\allowbreak mobilenetv3\_\allowbreak celebdfv2\_\allowbreak
+kaggle.py}, exported \texttt{.ptl}); \texttt{mnetv2-anti-spoof-baseline/} for
+the earlier single-frame baseline \\
+$G^2V^2$former & Two-stream (vision + landmark-graph) spatiotemporal
+transformer, Kronecker temporal attention, MAE-style pretraining
+\cite{yang2024g2v2} & $T=8$ frames, 68 landmarks/frame, masked-reconstruction
+pretrain then supervised fine-tune, 20 epochs & \texttt{g2v2former/}
+(\texttt{g2v2former-train.ipynb}, \texttt{-latency.ipynb},
+\texttt{-server.ipynb}) \\
+GD-FAS & CLIP ViT-B/16 image/text encoder, Group-wise Scaling Risk
+Minimisation, Feature Orthogonal Decomposition \cite{jung2025gdfas} & Official
+implementation adapted to LCC-FASD $\to$ Celeb-DF-v2 two-experiment protocol &
+\texttt{gd-fas/} (\texttt{gd-fas-experiments.ipynb},
+\texttt{-prepare-offline-bundle.ipynb}) \\
+Universal Xception & Cadene/FF++-style Xception, single binary head &
+$299\times299$, AdamW $10^{-4}$, weight decay $10^{-5}$, batch 128, up to 15
+epochs & \texttt{DeepFake-MoE/capstone-xception.ipynb} \\
+Five specialists & Same Xception backbone, one binary head per manipulation
+method (Deepfakes, Face2Face, FaceShifter, FaceSwap, NeuralTextures) & Same
+training configuration as the universal model, trained independently per
+method & \texttt{DeepFake-MoE/capstone-xception.ipynb} \\
+Six-way router (CNN) & Same Xception backbone, six-way linear head over
+2,048-dimensional embedding & Same training configuration; six-way
+cross-entropy & \texttt{DeepFake-MoE/capstone-xception.ipynb} \\
+Six-way router (XGBoost) & Gradient-boosted trees on the frozen 2,048-dimensional
+router embeddings & Ablation of the CNN linear head only; embeddings not
+retrained & \texttt{DeepFake-MoE/xception-xgb.ipynb} \\
+\bottomrule
+\end{longtable}
+}
+
+Every model above is either exported to a served artefact (MobileNetV3's
+\texttt{.ptl}, the Xception router and specialists behind the FastAPI/ngrok
+endpoint measured in \Cref{tab:latency}) or evaluated in its own notebook with
+saved result tables (G$^2$V$^2$former, GD-FAS). None is described from the
+reference paper's own reported numbers alone; every metric in Chapter~5 is
+this project's own run of the code artefact in the right-hand column above.
+
 \section{Application of Tools}
 
 \begin{table}[H]
@@ -157,11 +354,23 @@ epochs, and a binary threshold of 0.5.
 
 \section{Deployment}
 
-The only integrated deployment artefact is the local Flutter first stage. It
-captures a clip, creates one 24-frame input, invokes the PyTorch Lite model, and
-returns a thresholded score. The inspected application has server escalation
-disabled. The $G^2V^2$former FastAPI service demonstrates that a stronger model
-can be exposed independently, not that the two layers form one working system.
+Two artefacts are deployed and were exercised end to end for this report. The
+Flutter application captures a clip, creates one 24-frame input, invokes the
+on-device PyTorch Lite MobileNetV3 model, and applies the fixed 0.5 boundary
+described in Section~4.1. Concurrently, the frame is sent to a FastAPI service
+hosted on a Kaggle notebook session and exposed through an ngrok tunnel, which
+runs the six-way router and the selected Xception specialist and returns a fake
+probability, the routed class, and per-call latency; \Cref{tab:latency} was
+measured against this live endpoint rather than a static benchmark script. The
+two verdicts are combined by the client under the rule in
+\Cref{tab:verification-logic}. This differs from a production deployment in
+several respects that remain open: the ngrok endpoint is a development tunnel
+tied to an interactive notebook session rather than a versioned, authenticated
+production service; the connection is not currently protected by mutual
+authentication beyond a static API key; scores are not calibrated; and the
+router is the legacy six-way artefact discussed in Section~4.2.3 rather than the
+intended five-expert selector. The $G^2V^2$former FastAPI service was
+demonstrated separately and is not part of this call path.
 
 A production deployment would require versioned model contracts; authenticated,
 encrypted client--server communication; genuine-camera and device-integrity

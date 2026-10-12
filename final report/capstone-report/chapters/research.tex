@@ -30,22 +30,71 @@ as AltFreezing were developed specifically to improve this transfer
 \subsection{Temporal and domain-generalised face anti-spoofing}
 
 MobileNetV3 uses hardware-aware architecture search and efficient blocks intended
-for resource-constrained inference \cite{howard2019mobilenetv3}. In this project,
-its per-frame features are averaged over a short clip, providing a simple temporal
-baseline without the cost of full spatiotemporal attention.
+for resource-constrained inference \cite{howard2019mobilenetv3}. The project's
+on-device stage adapts STDL-FacePAD, which applies MobileNetV3 independently to
+sampled frames and averages the resulting features by adaptive temporal pooling
+before classification \cite{khan2025stdl}. STDL-FacePAD's own evaluation, on
+Replay-Attack, Replay-Mobile, and ROSE-Youtu, reports equal-error rates of 0.0\%,
+0.0\%, and 0.83\% respectively with an 11~ms inference time for a 256-sample
+batch; those figures describe physical presentation-attack datasets similar in
+character to LCC-FASD and should not be read as deepfake-detection performance.
+Averaging is efficient and permutation-invariant, but it cannot represent
+temporal order, which motivates the richer temporal stage below.
 
-$G^2V^2$former combines cropped face appearance with facial landmarks. It
-factorises spatial and temporal attention, introduces Kronecker temporal
-attention, and uses landmark motion to guide facial-expression features
-\cite{yang2024g2v2}. It is therefore relevant when motion contains evidence that
-is weak or ambiguous in any individual frame.
+$G^2V^2$former combines cropped face appearance with facial landmarks in a
+two-stream encoder (\Cref{fig:g2v2-arch}). Each stream stacks spatiotemporal
+blocks of a spatial-attention module followed by a temporal-attention module;
+the vision stream's spatial attention is guided by a photometric-consistency
+loss, while its temporal attention uses a Kronecker temporal attention that the
+graph stream's landmark motion helps steer through a scatter-and-add guidance
+signal. Both streams are pretrained independently with masked reconstruction
+before joint supervised fine-tuning \cite{yang2024g2v2}. It is therefore
+relevant when motion contains evidence that is weak or ambiguous in any
+individual frame.
 
-GD-FAS addresses a different failure mode. Its group-wise scaling risk
-minimisation and feature orthogonal decomposition aim to align both the direction
-and bias of local decision boundaries while separating domain-invariant from
-domain-specific features \cite{jung2025gdfas}. It remains a frame-level spatial
-model in this project; comparing it with $G^2V^2$former helps separate the value
-of temporal structure from the value of domain-generalised representation.
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{g2v2former_architecture.png}
+  \caption{$G^2V^2$former architecture: vision and graph streams of stacked
+  spatiotemporal blocks, fused through graph-guided temporal attention and a
+  concatenated classification head. Reproduced from \cite{yang2024g2v2}.}
+  \label{fig:g2v2-arch}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{g2v2former-topology.png}
+  \caption{Why the vision stream needs graph guidance rather than plain temporal
+  attention: the facial-landmark topology limits which nodes may interact (a),
+  photometric consistency defines the vision-stream loss (b), and Kronecker
+  temporal attention is needed because ordinary pipeline temporal attention has
+  a limited temporal receptive field (c). Reproduced from \cite{yang2024g2v2}.}
+  \label{fig:g2v2-topology}
+\end{figure}
+
+This mechanism is built specifically around physical presentation-attack
+evidence---landmark motion, photometric consistency across frames, patch-level
+temporal correlation---and, as \Cref{sec:transfer-failure} shows quantitatively,
+that specificity is also the architecture's limitation: it is biased toward the
+attack family it was designed and trained against and does not, on its own,
+transfer to digitally generated manipulations.
+
+GD-FAS addresses a different failure mode (\Cref{fig:gdfas-arch}). Built on a
+CLIP image/text encoder pair, its group-wise scaling risk minimisation and
+feature orthogonal decomposition align both the direction and bias of local
+decision boundaries while separating domain-invariant from domain-specific
+features \cite{jung2025gdfas}. It remains a frame-level spatial model in this
+project; comparing it with $G^2V^2$former helps separate the value of temporal
+structure from the value of domain-generalised representation.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{dgfas_framework.png}
+  \caption{GD-FAS framework: CLIP image and text encoders feed a feature
+  extractor and classifier regularised by group-wise scaling (GS-RM) and
+  feature orthogonal decomposition (FOD). Reproduced from \cite{jung2025gdfas}.}
+  \label{fig:gdfas-arch}
+\end{figure}
 
 \begin{table}[H]
 \centering
