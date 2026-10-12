@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'pages/landing_page.dart';
+import 'services/backend_config.dart';
+import 'services/challenge_settings.dart';
 import 'services/liveness_model.dart';
 import 'theme/app_theme.dart';
 import 'theme/theme_controller.dart';
@@ -11,9 +13,16 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
 
-  // Start loading the model now, in the background, so it is ready by the time
-  // the user has read the landing screen. Deliberately not awaited — the UI
-  // must not wait on it.
+  // Two preference reads. Awaited so the settings sheet, the challenge toggle
+  // and stage 3 never see compiled-in defaults after a user override.
+  await Future.wait([
+    BackendConfig.instance.load(),
+    ChallengeSettings.instance.load(),
+  ]);
+
+  // Start loading the stage-2 model now, in the background, so it is ready by
+  // the time the user has read the landing screen. Deliberately not awaited —
+  // the UI must not wait on it.
   unawaited(LivenessModel.instance.load());
 
   runApp(const FaceLivenessApp());

@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import '../painters/scan_ring_painter.dart';
+import '../services/challenge_settings.dart';
 import '../theme/app_theme.dart';
 import '../widgets/animated_label.dart';
 import '../widgets/app_button.dart';
+import '../widgets/backend_settings_sheet.dart';
 import '../widgets/fade_rise.dart';
 import '../widgets/theme_toggle.dart';
 import 'liveness_page.dart';
@@ -64,6 +66,8 @@ class _LandingPageState extends State<LandingPage>
                     FadeRise(delay: _step * 2, child: _title(t)),
                     const SizedBox(height: Space.xxl),
                     FadeRise(delay: _step * 3, child: _checklist(p)),
+                    const SizedBox(height: Space.lg),
+                    FadeRise(delay: _step * 4, child: const _ChallengeToggle()),
                     const SizedBox(height: Space.xl),
                   ],
                 ),
@@ -112,10 +116,28 @@ class _LandingPageState extends State<LandingPage>
             ),
           ],
         ),
-        const FadeRise(
+        FadeRise(
           offset: 0,
-          delay: Duration(milliseconds: 260),
-          child: ThemeToggle(),
+          delay: const Duration(milliseconds: 260),
+          child: Row(
+            children: [
+              Semantics(
+                button: true,
+                label: 'Second-opinion server settings',
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => BackendSettingsSheet.show(context),
+                  child: SizedBox(
+                    width: 44,
+                    height: 44,
+                    child: Icon(Icons.tune,
+                        size: 18, color: p.textTertiary),
+                  ),
+                ),
+              ),
+              const ThemeToggle(),
+            ],
+          ),
         ),
       ],
     );
@@ -154,7 +176,8 @@ class _LandingPageState extends State<LandingPage>
           constraints: const BoxConstraints(maxWidth: 320),
           child: Text(
             'Your camera confirms a real person is present. '
-            'Nothing leaves the device.',
+            'An on-device model and a server-side deepfake check '
+            'both have to agree — one frame is uploaded for the second.',
             style: t.bodyLarge,
           ),
         ),
@@ -203,7 +226,7 @@ class _LandingPageState extends State<LandingPage>
         const SizedBox(height: Space.md),
         Center(
           child: Text(
-            'Takes about 15 seconds · On-device',
+            'Takes about 15 seconds · Device + server',
             style: t.bodyMedium?.copyWith(
               color: p.textTertiary,
               fontSize: 12,
@@ -211,6 +234,75 @@ class _LandingPageState extends State<LandingPage>
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Switches the ML Kit challenge stage in and out of the pipeline.
+///
+/// It sits on the landing screen rather than in the settings sheet because it
+/// changes what the next screen asks of the user, which is not a setting to
+/// bury behind an icon.
+class _ChallengeToggle extends StatelessWidget {
+  const _ChallengeToggle();
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final p = context.palette;
+
+    return ValueListenableBuilder<bool>(
+      valueListenable: ChallengeSettings.instance,
+      builder: (context, enabled, _) {
+        return Semantics(
+          toggled: enabled,
+          label: 'Challenge check',
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => ChallengeSettings.instance.setEnabled(!enabled),
+            child: Column(
+              children: [
+                Divider(color: p.borderSubtle),
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: Space.md),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Challenge check', style: t.labelMedium),
+                            const SizedBox(height: 3),
+                            Text(
+                              enabled
+                                  ? 'Turn, blink and smile on cue before the '
+                                      'models run. One attempt.'
+                                  : 'Skipped — the check goes straight to the '
+                                      'on-device model.',
+                              style: t.bodyMedium
+                                  ?.copyWith(color: p.textTertiary),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: Space.md),
+                      Switch(
+                        value: enabled,
+                        onChanged: ChallengeSettings.instance.setEnabled,
+                        activeThumbColor: p.onInk,
+                        activeTrackColor: p.ink,
+                        inactiveThumbColor: p.textTertiary,
+                        inactiveTrackColor: p.surfaceMuted,
+                      ),
+                    ],
+                  ),
+                ),
+                Divider(color: p.borderSubtle),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }
