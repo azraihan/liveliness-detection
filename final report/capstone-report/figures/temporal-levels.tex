@@ -1,0 +1,12 @@
+\begin{tikzpicture}[
+  font=\small,
+  box/.style={draw=buetblue,rounded corners,fill=softblue,align=left,text width=118mm,minimum height=12mm},
+  arr/.style={-{Latex[length=2.2mm]},thick,draw=buetblue}
+]
+\node[box] (a) {\textbf{MobileNetV3 temporal aggregation:} per-frame visual features are mean-pooled across a sampled clip before binary classification.};
+\node[box,below=7mm of a] (b) {\textbf{$G^2V^2$former:} face appearance and 68-landmark motion are fused through spatial and temporal attention for video-level presentation-attack detection.};
+\node[box,below=7mm of b] (c) {\textbf{Decision-level extension:} aggregate calibrated evidence across frames/models and escalate unstable or uncertain cases. This stage is proposed, not integrated.};
+\draw[arr] (a) -- (b);
+\draw[arr] (b) -- (c);
+\end{tikzpicture}
+

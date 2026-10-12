@@ -1,0 +1,347 @@
+\chapter{Project Management, Teamwork, and Impact}
+\label{ch:management}
+
+\section{Project Management and Finance}
+
+\subsection{Planning and Risk Management}
+
+The work progressed from problem framing and a three-tier target architecture to
+mobile temporal modelling, richer temporal analysis, domain-generalisation
+comparison, integration, and finally specialist routing. \Cref{fig:timeline}
+reconstructs this sequence in relative phases because verified calendar dates are
+not yet consolidated. It must be replaced by the actual baseline and completion
+dates before submission.
+
+\begin{figure}[H]
+\centering
+\begin{ganttchart}[
+  hgrid,vgrid,
+  x unit=15mm,
+  y unit chart=6mm,
+  title label font=\small\bfseries,
+  bar label font=\scriptsize,
+  bar/.append style={fill=buetblue!65}
+]{1}{8}
+\gantttitle{Relative project phase}{8}\\
+\gantttitlelist{1,...,8}{1}\\
+\ganttbar{Proposal and requirements}{1}{1}\\
+\ganttbar{Architecture and threat model}{1}{2}\\
+\ganttbar{MobileNet and Flutter}{2}{5}\\
+\ganttbar{$G^2V^2$former experiments}{3}{5}\\
+\ganttbar{GD-FAS and data preparation}{5}{6}\\
+\ganttbar{Mobile/API integration work}{5}{7}\\
+\ganttbar{Xception specialists/routing}{7}{8}\\
+\ganttbar{Synthesis and final report}{8}{8}
+\end{ganttchart}
+\caption{Draft reconstruction of project progression. Phase indices show order
+and overlap, not verified calendar dates.}
+\label{fig:timeline}
+\end{figure}
+
+\begin{longtable}{@{}p{35mm}p{42mm}p{55mm}@{}}
+\caption{Principal project risks and mitigations.}\label{tab:risks}\\
+\toprule
+Risk & Consequence & Mitigation and remaining action \\
+\midrule
+\endfirsthead
+\toprule
+Risk & Consequence & Mitigation and remaining action \\
+\midrule
+\endhead
+Frame/identity leakage & Inflated validation performance & Split by source-video
+group; audit every dataset at identity and derivation level. \\
+Domain or generator shift & Failure on new attacks despite high source accuracy &
+Cross-dataset evaluation, diverse training, unseen-generator holdout, drift
+monitoring, conservative escalation. \\
+Class imbalance & Misleading accuracy and unsafe threshold & Report balanced
+accuracy and class rates; calibrate on deployment prevalence/cost. \\
+Router failure & Correct expert is bypassed & Report oracle/specialist gaps,
+top-$k$ or soft-routing ablations, and a safe universal fallback. \\
+Capture injection & Classifier receives convincing forged media & Device/sensor
+attestation, protected channel, replay defence, IAD and red-team testing. \\
+Biometric disclosure & Irreversible privacy harm & Minimise collection, encrypt,
+separate identifiers, restrict access, delete by policy, incident response. \\
+False rejection & Exclusion and repeated exposure & Accessible recapture, bounded
+retry, alternative verification, timely appeal and review. \\
+Training instability or missing checkpoint & Irreproducible claims & Freeze
+environment/configuration/checksum and regenerate result tables from artefacts. \\
+Model obsolescence & New manipulations evade detection & Versioned monitoring,
+red-team sets, retraining triggers, rollback, and maintained ownership. \\
+Scope inflation & Prototype presented as product & Maintain implemented,
+experimental, and proposed labels in architecture and claims. \\
+\bottomrule
+\end{longtable}
+
+\subsection{Budgeting and Resource Identification}
+
+An earlier weekly report planned a USD 260--540 GPU budget. That range is a plan,
+not evidence of expenditure. The final cost record must distinguish free notebook
+quotas, personally owned devices, any paid compute/storage, internet use, and
+personnel time.
+
+\begin{table}[H]
+\centering
+\caption{Draft resource and budget record.}
+\label{tab:budget}
+\begin{tabularx}{\textwidth}{@{}p{39mm}p{33mm}Y@{}}
+\toprule
+Resource & Recorded cost & Evidence/status \\
+\midrule
+GPU compute & Planned USD 260--540 & Earlier estimate only; actual provider,
+hours, tier, and payment \TBC{actual compute record}. \\
+Local development devices & \TBC{cost basis} & Personally owned laptops/phones;
+record models and whether an incremental project cost was incurred. \\
+Storage and network & \TBC{actual cost} & Public dataset transfer and artefact
+storage; record paid services and retention. \\
+Software & USD 0 licence cost for main tools & Primarily open-source research and
+development stack; licence obligations still apply. \\
+Human effort & \TBC{person-hours} & Student effort should be reported separately
+from cash spending; production review would be a recurring cost. \\
+Partner/dataset grant & USD 0 received & No project grant or private dataset was
+provided by Pathao or a dataset owner. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Economic Analysis and Financial Prospecting}
+
+The cascade is economically attractive only if local screening reduces server
+and review cost without increasing fraud or abandonment beyond acceptable limits.
+For $N$ sessions, a transparent expected-cost model is
+\begin{equation}
+C=N(C_{\mathrm{edge}}+r_sC_{\mathrm{server}}+r_hC_{\mathrm{review}})
+ + N_{\mathrm{FA}}L_{\mathrm{fraud}}
+ + N_{\mathrm{FR}}L_{\mathrm{friction}},
+\end{equation}
+where $r_s$ and $r_h$ are escalation and review rates. The loss terms must be
+estimated from partner evidence rather than borrowed percentages. Calibration
+curves can then show how changing a threshold moves cost between compute, review,
+false acceptance, and false rejection.
+
+No financial return is claimed in this project because production prevalence,
+fraud loss, abandonment, reviewer cost, and integration cost were not supplied.
+The useful output is the model above and the measurements needed to populate it.
+
+\subsection{Sustainability in Business and Commercialisation}
+
+A responsible path is: reproducible research validation; licence/privacy/security
+review; partner-specific data collection with consent; red-team and independent
+PAD/IAD evaluation; monitored shadow deployment; a limited pilot with appeal; and
+only then a staged rollout. Long-term ownership must cover model monitoring,
+incident response, reviewer training, data retention, accessibility, compliance,
+and retirement of obsolete models. A specialist bank increases maintenance cost;
+its gain must persist against a stronger universal model before commercial use.
+
+\section{Individual and Teamwork}
+
+\subsection{Participation and Contribution}
+
+The candidate list is established, but the repository alone cannot determine all
+research, presentation, debugging, coordination, and writing effort. The team
+must validate \Cref{tab:contributions} jointly against notebooks, commits,
+reports, slides, and meeting records rather than treating an early assigned role
+as an achieved contribution.
+
+\begin{table}[H]
+\centering
+\caption{Contribution record to be verified by the team.}
+\label{tab:contributions}
+\begin{tabularx}{\textwidth}{@{}p{43mm}p{24mm}Y@{}}
+\toprule
+Candidate & Student ID & Verified concrete contributions and delivery evidence \\
+\midrule
+Nafis Nahian & 2105007 & \TBC{implementation, experiments, reports,
+integration, review, coordination, and deadlines}. \\
+Abrar Zahin Raihan & 2105009 & \TBC{implementation, experiments, reports,
+integration, review, coordination, and deadlines}. \\
+Aritra Debnath & 2105010 & \TBC{implementation, experiments, reports,
+integration, review, coordination, and deadlines}. \\
+Tamzeed Mahfuz & 2105012 & \TBC{implementation, experiments, reports,
+integration, review, coordination, and deadlines}. \\
+Ruwad Naswan & 2105051 & \TBC{implementation, experiments, reports,
+integration, review, coordination, and deadlines}. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Collaboration and Conflict Resolution}
+
+The project required agreement on dataset protocols, checkpoint selection,
+metric definitions, integration contracts, and how to interpret negative results.
+A reproducible collaboration process uses issue-level ownership, peer review,
+shared experiment manifests, named decision records, and explicit escalation when
+results conflict. The unresolved 10/24-frame and HTER discrepancies demonstrate
+why numerical disagreements must be resolved through artefacts and reruns rather
+than preference. \TBC{Add one or two verified examples of a disagreement, the
+alternatives considered, the resolution, and its effect on schedule or design.}
+
+\subsection{Leadership and Direction}
+
+Technical leadership in this project includes narrowing claims after cross-domain
+failure, assigning reproducibility work, protecting time for integration, and
+raising privacy/security issues before deployment. The supervisor provided major
+research direction and originated the specialist-routing idea. \TBC{Identify the
+student leads for each phase and document how they delegated, reviewed work, and
+handled missed milestones.}
+
+\subsection{Multidisciplinary Engagement}
+
+The work combines machine learning, mobile software, backend deployment,
+cyber-security, human--computer interaction, financial risk, biometric privacy,
+and professional ethics. A production team would additionally require fraud
+operations, accessibility, legal/compliance, incident response, and customer
+support. The engineering decision is not solely which classifier has the largest
+AUC: it includes capture provenance, consent, threshold costs, user recourse,
+reviewer workload, and maintainability.
+
+\section{Impact on Society}
+
+Reliable remote verification can widen access, reduce impersonation, and allow a
+customer to complete a sensitive process without travel. The same system can
+also deny service, intensify surveillance, or expose biometric data. Impact is
+therefore conditional on who can use the capture flow, whose faces and devices
+were represented during evaluation, what happens after rejection, and whether a
+customer can challenge a decision.
+
+False acceptance may harm the impersonated person and the provider. False
+rejection may disproportionately burden people with older cameras, unstable
+connectivity, darker or lighter skin under poor illumination, facial differences,
+religious attire, disability, or difficulty performing an active challenge.
+Repeated retry can itself increase biometric exposure and frustration. Socially
+responsible deployment requires an equivalent alternative verification route,
+clear notice, bounded retry, timely human appeal, accessible instructions, and
+regular publication of aggregate error and override behaviour where safe.
+
+\section{Environmental Impact and Life Cycle Sustainability}
+
+GPU training, repeated hyperparameter search, dataset replication, network
+transfer, server escalation, and retained video all consume energy and storage.
+The cascade may reduce serving energy by resolving clear cases locally, but mobile
+battery use and the embodied impact of devices still matter. A five-expert bank
+also multiplies training and storage unless sharing or distillation is used.
+
+The environmental plan is to record GPU type and hours; reuse frozen embeddings
+for router ablations; stop unpromising runs early under a declared rule; cache
+preprocessing safely; select the smallest model meeting validated requirements;
+limit media retention and duplication; batch server work where latency allows;
+and measure energy/latency per accepted, escalated, and reviewed transaction.
+Lifecycle planning must include model replacement and secure deletion, not only
+initial training.
+
+\section{Ethics}
+
+Ethical analysis is a design constraint throughout the pipeline. The main risks,
+controls, and missing evidence are shown in \Cref{tab:ethics}.
+
+\begin{longtable}{@{}p{31mm}p{52mm}p{50mm}@{}}
+\caption{Ethical risk--control--evidence matrix.}\label{tab:ethics}\\
+\toprule
+Risk & Required control & Evidence still required \\
+\midrule
+\endfirsthead
+\toprule
+Risk & Required control & Evidence still required \\
+\midrule
+\endhead
+Biometric privacy & Purpose limitation, minimisation, encryption, separated
+identifiers, least privilege, deletion, breach process & Data inventory, retention
+schedule, access audit, deletion test, incident exercise \\
+Inadequate consent & Plain-language notice of purpose, processing, retention,
+sharing, alternatives, and appeal & Comprehension/usability study and approved
+notice \\
+Demographic disparity & Representative evaluation, subgroup error/calibration,
+intersectional testing, mitigation and stop criteria & Consented demographic
+protocol and sufficiently powered results \\
+Device/network disparity & Quality-aware capture, low-bandwidth behaviour,
+supported-device testing, alternative path & Device matrix and field trials \\
+False rejection & Bounded retry, accessible recapture, reason categories,
+alternative verification and human appeal & FRR by condition/group; appeal time,
+overturn and abandonment rates \\
+False acceptance & Capture integrity, PAD/IAD, red-team tests, conservative high-
+risk policy and monitoring & Attack-presentation and injection test campaign \\
+Selective escalation bias & Audit who is escalated/reviewed and outcome gaps;
+calibrate by policy without discriminatory shortcuts & Escalation, review, and
+override rates by relevant subgroup and device condition \\
+Reviewer automation bias & Show uncertainty/evidence limits, train reviewers,
+blind irrelevant attributes, sample QA and second review & Human-factors study and
+inter-reviewer consistency \\
+Dual-use disclosure & Publish enough for reproducibility while withholding
+operational secrets that materially ease bypass; responsible vulnerability route &
+Threat-informed release and disclosure plan \\
+Dataset/IP misuse & Licence/provenance audit, minimum redistribution, attribution,
+and removal process & Dataset-by-dataset permission record \\
+\bottomrule
+\end{longtable}
+
+\subsection{Equity and Inclusivity}
+
+Aggregate AUC can conceal unequal false-accept and false-reject rates. Evaluation
+should pre-register relevant groups and capture conditions, avoid using sensitive
+attributes as unexplained proxies, report uncertainty, and investigate
+intersections where sample size permits. Asian-Fakes provides one additional
+domain but is not, by itself, proof of demographic fairness. A face dataset's name
+or geographic origin does not guarantee a balanced or consented fairness sample.
+
+The user interface should not require speech, hearing, a narrow range of facial
+motion, expensive hardware, or sustained high bandwidth without an equivalent
+alternative. Escalation and review are also fairness surfaces: a group sent to
+review more often experiences delay and greater human scrutiny even if the final
+acceptance rate appears equal.
+
+\subsection{Accountability and Personal Responsibility}
+
+Every decision should be attributable to a model version, configuration,
+threshold policy, quality state, and responsible owner. Model developers are
+responsible for reporting limitations; product owners for appropriate use;
+security teams for capture/channel controls; reviewers for reasoned decisions;
+and management for resourcing appeal and incident response. A human reviewer must
+not become an accountability sink: override rules, evidence access, second review,
+quality sampling, and appeal outcomes require governance.
+
+The candidates accept responsibility for distinguishing completed work from
+proposal, retaining contradictory results until reconciled, and correcting the
+routing formulation. High performance on one benchmark must never be advertised
+as comprehensive fraud prevention.
+
+\subsection{Proper Use of Intellectual Property}
+
+\begin{table}[H]
+\centering
+\caption{Third-party asset and attribution inventory.}
+\label{tab:ip}
+\begin{tabularx}{\textwidth}{@{}p{34mm}Y Y@{}}
+\toprule
+Asset & Use & Required action \\
+\midrule
+FaceForensics++, Celeb-DF-v2, LCC-FASD, Asian-Fakes, ROSE-Youtu & Research data &
+Verify access terms, citation, redistribution, consent/provenance, and derivative
+frame policy separately. \\
+$G^2V^2$former and GD-FAS & Adapted research methods/code & Cite papers and
+repositories; preserve licence notices; document modifications and weights. \\
+MobileNetV3 and Xception & Model architectures/pretrained components & Cite
+original work; record library/weight licence and version. \\
+PyTorch, Flutter, FastAPI, XGBoost and supporting libraries & Implementation stack &
+Maintain dependency bill of materials and comply with their licences. \\
+BUET logo and report template & Institutional report material & Use only for the
+course report and preserve required formatting/attribution. \\
+Generative-AI assistance & Drafting/editing support & Disclose per course policy;
+students verify all content and do not assign authorship to the tool. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+No dataset, code, or figure should be redistributed merely because it is publicly
+accessible. The final repository release should include only artefacts allowed by
+their licences and access agreements.
+
+\subsection{Professionalism and Ethical Codes}
+
+The ACM and IEEE codes emphasise avoiding harm, honesty about system limitations,
+respect for privacy, fairness, competence, and responsibility
+\cite{acmcode,ieeecode}. Applied here, professionalism means resisting pressure
+to turn benchmark numbers into deployment guarantees; documenting negative and
+contradictory results; protecting captured faces; obtaining expertise outside
+machine learning; and suspending or rolling back a system when monitored harm
+exceeds agreed thresholds. Security details should be disclosed responsibly, and
+affected users should receive meaningful explanation and recourse.
+

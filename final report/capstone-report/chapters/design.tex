@@ -1,0 +1,172 @@
+\chapter{System Design and Implementation}
+\label{ch:design}
+
+\section{Functional Design and Sub-problem Partitioning}
+
+The project was partitioned by evidence and operating layer rather than by one
+monolithic model:
+
+\begin{enumerate}
+  \item \textbf{Capture and preprocessing:} record a short clip, sample frames,
+        locate/crop/normalise faces, and reject unusable capture.
+  \item \textbf{Mobile temporal screening:} compute per-frame MobileNetV3 features,
+        aggregate across the clip, and return a first-layer probability.
+  \item \textbf{Rich temporal analysis:} combine visual tokens and facial-landmark
+        motion in $G^2V^2$former.
+  \item \textbf{Spatial domain generalisation:} evaluate GD-FAS under source-only
+        and fine-tuned transfer protocols.
+  \item \textbf{Deepfake specialisation:} train a universal Xception baseline and
+        one binary specialist per manipulation method, then learn a meta-router.
+  \item \textbf{Policy and governance:} calibrate scores, select escalation bands,
+        audit decisions, preserve privacy, and provide human fallback.
+\end{enumerate}
+
+Temporal information appears at multiple levels, illustrated in
+\Cref{fig:temporal-levels}. The lightweight model averages frame embeddings; the
+transformer represents explicit time/landmark relationships; and the target
+decision layer can evaluate score stability across the session. Only the first
+two have experimental artefacts in the repository.
+
+\begin{figure}[H]
+  \centering
+  \resizebox{0.95\textwidth}{!}{\input{figures/temporal-levels}}
+  \caption{Temporal evidence investigated or proposed at three levels.}
+  \label{fig:temporal-levels}
+\end{figure}
+
+\section{Design Refinement and Simulation}
+
+The design evolved through successive findings. Early work treated a small
+mobile model as the primary detector and a server as a stronger fallback. Strong
+within-domain physical-PAD results motivated explicit temporal research. The
+$G^2V^2$former experiments then exposed poor transfer to high-quality digital
+manipulations, while GD-FAS provided a spatial domain-generalisation comparison.
+Fine-tuning improved some deepfake results but introduced source-retention and
+unseen-domain trade-offs. The later Xception study therefore tested whether the
+heterogeneity of manipulation artefacts was better handled with specialists.
+
+Two refinements follow from this progression. First, ``liveness'' must include
+capture provenance: a visually live face can still be injected. Second, the
+second layer must not be described as one fixed model before common-protocol
+calibration and ablation show which evidence is complementary. The architecture
+therefore presents $G^2V^2$former, GD-FAS, and Xception routing as evaluated
+candidates, not an already fused product.
+
+\subsection{Mobile temporal model}
+
+For frame $x_t$, the MobileNetV3 backbone produces feature vector $h_t$. The clip
+representation and probability are
+\begin{equation}
+  \bar h=\frac{1}{K}\sum_{t=1}^{K}h_t,
+  \qquad p_1=\sigma(w^\top \bar h+b).
+\end{equation}
+The exported and application contract uses $K=24$. A training script in the
+repository uses $K=10$, so checkpoint provenance and sequence-length consistency
+must be reconciled before the exported artefact is associated with a reported
+training run. Mean pooling is efficient and permutation-invariant, but it cannot
+represent temporal order.
+
+\subsection{\texorpdfstring{$G^2V^2$former}{G2V2Former} and GD-FAS}
+
+$G^2V^2$former uses an eight-frame input in the inspected experiment and 68
+facial landmarks per frame. Its explicit spatiotemporal attention makes it a
+candidate server model, but face/landmark preprocessing dominates a part of
+latency and introduces an additional failure surface. GD-FAS operates on frames
+and optimises group-aware/domain-invariant features. The comparison is deliberate:
+it asks whether temporal dynamics or spatial domain regularisation transfers more
+reliably across the selected datasets.
+
+\subsection{Embedding-conditioned specialist routing}
+
+\begin{figure}[H]
+  \centering
+  \resizebox{0.98\textwidth}{!}{\input{figures/specialist-router}}
+  \caption{Intended hard specialist-routing formulation. A meta-model selects one
+  of five binary experts from the frame embedding; it never predicts an original
+  class.}
+  \label{fig:intended-router}
+\end{figure}
+
+The specialists share an Xception architecture (approximately 20.81 million
+parameters) but are tuned separately for Deepfakes, Face2Face, FaceShifter,
+FaceSwap, and NeuralTextures. Xception's depthwise-separable convolution provides
+a consistent baseline architecture \cite{chollet2017xception}. The intended hard
+routing design in \Cref{fig:intended-router} computes only the selected expert at
+decision time if router features are available independently. In the current
+notebooks, however, router labels are six-way method/original labels and the
+original branch uses $1-P(\mathrm{original})$. That implementation tests a useful
+method-conditioned routing hypothesis but not the final mathematical definition.
+
+To train a true best-expert router, predictions for every training frame must be
+generated out-of-fold. Let $\ell(s_e(x_i),y_i)$ be expert $e$'s binary loss; then
+one possible target is
+\begin{equation}
+  e_i^*=\arg\min_{e\in\mathcal E}\ell(s_e^{(-f(i))}(x_i),y_i),
+\end{equation}
+where $s_e^{(-f(i))}$ excludes sample $i$'s fold from its training. A deterministic
+tie rule and a policy for examples on which all experts fail are required.
+
+\section{Application of Tools}
+
+\begin{table}[H]
+\centering
+\caption{Main tools and their engineering roles.}
+\label{tab:tools}
+\begin{tabularx}{\textwidth}{@{}p{32mm}Y Y@{}}
+\toprule
+Tool & Role & Use in this project \\
+\midrule
+PyTorch / torchvision & Training, transfer learning, evaluation, export &
+MobileNetV3, $G^2V^2$former, GD-FAS, and Xception experiments \cite{pytorch}. \\
+Flutter / Dart & Cross-platform mobile application & Camera capture, 24-frame
+preprocessing, PyTorch Lite invocation, and local result display \cite{flutter}. \\
+FastAPI & Research inference service & Separately demonstrated endpoint for the
+$G^2V^2$former workflow; not connected to Flutter. \\
+XGBoost & Router-head ablation & Tree-based method prediction from saved
+embeddings in the legacy six-way routing experiment. \\
+OpenCV / face and landmark tooling & Frame extraction and facial preprocessing &
+Face crops and landmark sequence construction; failure handling needs hardening. \\
+Jupyter / Colab & Reproducible experiment narrative & Training, evaluation,
+result tables, and latency pilot; environment/version locking remains incomplete. \\
+Git / GitHub & Source history and collaboration & Version control for source and
+reports; large datasets/checkpoints require separate governed storage. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Implementation}
+
+The repository contains four main implementation strands. The mobile pipeline
+includes temporal MobileNetV3 training/export code and a Flutter application. The
+$G^2V^2$former strand contains data preparation, adapted training/evaluation, and
+a FastAPI prototype. The GD-FAS strand contains domain-generalisation evaluation
+and fine-tuning work. The \texttt{DeepFake-MoE} directory contains two Xception
+notebooks: the main CNN routing experiment and the XGBoost router-head variant.
+The directory name is retained as a repository label; this report uses
+``embedding-conditioned specialist routing'' because the current hard, single
+expert selection is more precise than mixture-of-experts terminology.
+
+The routing dataset was constructed from FaceForensics++ C23 with original and
+five fake methods. The saved configuration uses 1,000 video groups: 900 training
+groups and 100 validation groups. Sampling 100 frames per method/video yields
+540,000 training frames and 60,000 validation frames. Groups, rather than frames,
+are separated to reduce video-content leakage. Models take $299\times299$ images;
+training includes blur, JPEG compression, horizontal flipping, AdamW with initial
+learning rate $10^{-4}$ and weight decay $10^{-5}$, batch size 128, up to 15
+epochs, and a binary threshold of 0.5.
+
+\section{Deployment}
+
+The only integrated deployment artefact is the local Flutter first stage. It
+captures a clip, creates one 24-frame input, invokes the PyTorch Lite model, and
+returns a thresholded score. The inspected application has server escalation
+disabled. The $G^2V^2$former FastAPI service demonstrates that a stronger model
+can be exposed independently, not that the two layers form one working system.
+
+A production deployment would require versioned model contracts; authenticated,
+encrypted client--server communication; genuine-camera and device-integrity
+signals; replay protection; strict media retention; rate limiting; monitoring;
+calibrated policies; rollback; and a reviewer/appeal process. Raw face videos
+should not be logged by default. Audit records should store the minimum necessary
+metadata---such as consent/purpose, model version, quality state, calibrated
+scores, decision reason, and override---under a declared retention schedule.

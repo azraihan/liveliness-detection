@@ -1,0 +1,23 @@
+\begin{tikzpicture}[
+  font=\footnotesize,
+  node distance=7mm and 8mm,
+  box/.style={draw=buetblue,rounded corners,fill=softblue,align=center,minimum height=11mm,text width=25mm},
+  expert/.style={draw=gray!80,rounded corners,fill=white,align=center,minimum height=7mm,text width=25mm},
+  arr/.style={-{Latex[length=2mm]},thick,draw=buetblue}
+]
+\node[box] (x) {preprocessed\\face frame $x$};
+\node[box,right=of x] (phi) {embedding\\$z=\phi(x)$};
+\node[box,right=of phi] (router) {meta-router\\$q_e(z)$};
+\node[expert,above right=-1mm and 13mm of router] (e1) {Deepfakes expert};
+\node[expert,below=2mm of e1] (e2) {Face2Face expert};
+\node[expert,below=2mm of e2] (e3) {FaceShifter expert};
+\node[expert,below=2mm of e3] (e4) {FaceSwap expert};
+\node[expert,below=2mm of e4] (e5) {NeuralTextures expert};
+\node[box,text width=31mm,right=13mm of e3] (out) {$\widehat p(\mathrm{fake}\mid x)$\\from selected expert};
+
+\draw[arr] (x) -- (phi);
+\draw[arr] (phi) -- (router);
+\foreach \e in {e1,e2,e3,e4,e5}{\draw[arr] (router.east) -- (\e.west);}
+\foreach \e in {e1,e2,e3,e4,e5}{\draw[arr] (\e.east) -- (out.west);}
+\node[below=6mm of e5,align=center,text width=62mm,text=draftred] {No ``original'' route: every frame is assigned to one binary specialist.};
+\end{tikzpicture}

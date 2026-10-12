@@ -1,0 +1,142 @@
+\chapter{Preliminary Research}
+\label{ch:research}
+
+\section{Literature Review}
+
+\subsection{Presentation attacks, deepfakes, and injection}
+
+PAD traditionally evaluates whether a biometric sample is bona fide or a
+presentation attack at the capture device. ISO/IEC 30107-3 defines principles for
+testing and reporting PAD performance, including attack-type classification, but
+explicitly excludes attacks outside the capture device from its scope
+\cite{iso30107}. This boundary matters: a detector that recognises screen moir\'e
+or print texture does not establish that a video stream came from a genuine
+camera. ENISA's later guidance therefore treats injection attack detection (IAD)
+alongside PAD and recommends a multi-layer client--server approach
+\cite{enisa2024}. NIST SP 800-63A-4 similarly calls for confidence in the genuine
+sensor, protected communications, manipulated-media analysis, and documented
+manual processes \cite{nist80063a4}.
+
+FaceForensics++ provides a controlled benchmark with several facial manipulation
+methods and compression levels, and established Xception as a strong baseline
+\cite{rossler2019faceforensics,chollet2017xception}. Celeb-DF-v2 was designed with
+higher-quality face swaps and fewer conspicuous synthesis artefacts, making it a
+more challenging test of shortcut-dependent detectors \cite{li2020celebdf}.
+Cross-dataset deepfake work repeatedly shows that strong in-domain performance
+does not guarantee unseen-generator performance; video-oriented approaches such
+as AltFreezing were developed specifically to improve this transfer
+\cite{wang2023altfreezing}.
+
+\subsection{Temporal and domain-generalised face anti-spoofing}
+
+MobileNetV3 uses hardware-aware architecture search and efficient blocks intended
+for resource-constrained inference \cite{howard2019mobilenetv3}. In this project,
+its per-frame features are averaged over a short clip, providing a simple temporal
+baseline without the cost of full spatiotemporal attention.
+
+$G^2V^2$former combines cropped face appearance with facial landmarks. It
+factorises spatial and temporal attention, introduces Kronecker temporal
+attention, and uses landmark motion to guide facial-expression features
+\cite{yang2024g2v2}. It is therefore relevant when motion contains evidence that
+is weak or ambiguous in any individual frame.
+
+GD-FAS addresses a different failure mode. Its group-wise scaling risk
+minimisation and feature orthogonal decomposition aim to align both the direction
+and bias of local decision boundaries while separating domain-invariant from
+domain-specific features \cite{jung2025gdfas}. It remains a frame-level spatial
+model in this project; comparing it with $G^2V^2$former helps separate the value
+of temporal structure from the value of domain-generalised representation.
+
+\begin{table}[H]
+\centering
+\caption{Research approaches and their roles in the project.}
+\label{tab:literature-map}
+\begin{tabularx}{\textwidth}{@{}p{28mm}p{27mm}Y Y@{}}
+\toprule
+Approach & Primary evidence & Strength & Limitation relevant here \\
+\midrule
+MobileNetV3 pooling & Short face clip & Efficient mobile temporal summary & Mean
+pooling can discard ordering and subtle motion. \\
+$G^2V^2$former & Face video and 68 landmarks & Explicit photometric--dynamic
+fusion & Landmark extraction and attention increase latency and failure modes. \\
+GD-FAS & Single face frames and domain labels & Explicit domain-invariant feature
+objective & Does not directly model temporal consistency. \\
+Universal Xception & Single face frame & Simple common detector and baseline & A
+single boundary may average incompatible manipulation artefacts. \\
+Routed specialists & Embedding plus expert bank & Allocates capacity by
+manipulation pattern & Router errors, training leakage, and compute multiply risk. \\
+Capture/IAD controls & Device and channel signals & Addresses camera bypass & Not
+implemented by a media classifier alone. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Existing Solutions and Technologies}
+
+Commercial liveness systems commonly advertise passive analysis, active
+challenge--response, or combinations of both. Active systems ask the user to
+perform a random action; they may provide session-specific evidence but add
+friction and accessibility concerns. Passive systems analyse ordinary capture in
+the background; they can improve usability but must not be treated as proof of a
+trusted source. Vendor claims are useful indicators of product direction, not
+independent evidence of accuracy.
+
+The technological alternatives considered were lightweight convolutional
+networks, video transformers, domain-generalisation methods, universal deepfake
+detectors, specialist ensembles, active challenges, and capture-channel controls.
+No one option covers every threat. The selected design therefore treats the
+classifier as one layer in a risk-based verification process.
+
+\section{Market and User Research}
+
+Pathao supplied the initial financial-verification problem and early context, but
+the team did not receive private operational data, a grant, or sustained product
+collaboration. Consequently, this report does not claim direct Pathao user
+research, production integration, or measured business impact. The requirements
+instead derive from the initial problem framing, security guidance, public
+literature, and prototype observation.
+
+The affected user groups extend beyond fraud analysts. Legitimate applicants need
+a quick, comprehensible process that works across devices, connectivity levels,
+skin tones, ages, abilities, and religious or cultural presentation. Reviewers
+need bounded workloads and enough context to avoid blind trust in scores. A
+financial provider needs auditable decisions, recoverable failure handling, and
+controls against both fraud and unlawful or excessive biometric processing.
+
+Before deployment, the market/user study must therefore add interviews or tests
+with applicants, accessibility participants, fraud reviewers, support personnel,
+security engineers, privacy/legal personnel, and product owners. Required outputs
+include acceptable capture time, retry limits, low-bandwidth behaviour, consent
+language, review turnaround, and an explicit false-accept/false-reject cost model.
+
+\section{Feasibility Study}
+
+\textbf{Technical feasibility.} A temporal MobileNetV3 has been exported and
+integrated into a Flutter capture path, showing that local inference is feasible.
+The stronger models run in research/server environments. End-to-end selective
+escalation and capture attestation remain unimplemented, so system feasibility is
+only partially demonstrated.
+
+\textbf{Data feasibility.} Public datasets make repeatable research possible, but
+they cannot represent the final operating population or attack distribution.
+Licences, consent conditions, identity leakage, demographic composition, and
+subject-disjoint splits must be audited before reuse. No private Pathao data is
+available for deployment-domain validation.
+
+\textbf{Operational feasibility.} A cascade can reduce server load by retaining a
+fast local path, but only after scores are calibrated and thresholds are selected
+from operational costs. Network failure, poor capture, device compromise, and
+review capacity require explicit fallback behaviour.
+
+\textbf{Economic and legal feasibility.} Open-source tooling and public data
+reduce prototype cost, whereas GPU training, secure infrastructure, testing,
+monitoring, and human review remain material. NIST and ENISA are authoritative
+engineering guidance, not declarations of legal compliance in Bangladesh. Local
+privacy, financial, cyber-security, consumer-protection, and evidentiary
+requirements require review by qualified stakeholders before deployment.
+
+\textbf{Conclusion.} Research prototyping is feasible, and the on-device stage
+has been demonstrated. Production adoption is conditional on integrated security
+controls, field data, independent PAD/IAD testing, subgroup analysis, operational
+calibration, and governance.
+

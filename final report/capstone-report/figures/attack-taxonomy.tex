@@ -1,0 +1,23 @@
+\begin{tikzpicture}[
+  font=\small,
+  box/.style={draw=buetblue,rounded corners,fill=softblue,align=center,minimum height=11mm,text width=37mm},
+  leaf/.style={draw=gray!75,rounded corners,fill=white,align=center,minimum height=10mm,text width=37mm},
+  arr/.style={-{Latex[length=2.2mm]},thick,draw=buetblue}
+]
+\node[box] (capture) {Delivery path};
+\node[leaf,below left=12mm and 17mm of capture] (physical) {Physical presentation\\print, replay, mask};
+\node[leaf,below=12mm of capture] (recapture) {Deepfake recaptured\\through a display};
+\node[leaf,below right=12mm and 17mm of capture] (inject) {Digital injection\\virtual camera or API};
+\draw[arr] (capture) -- (physical);
+\draw[arr] (capture) -- (recapture);
+\draw[arr] (capture) -- (inject);
+
+\node[box,below=23mm of recapture] (family) {Manipulation family};
+\node[leaf,below left=12mm and 17mm of family] (swap) {Identity swap\\Deepfakes, FaceSwap,\\FaceShifter};
+\node[leaf,below=12mm of family] (reenact) {Reenactment\\Face2Face,\\NeuralTextures};
+\node[leaf,below right=12mm and 17mm of family] (outside) {Outside experiment\\full synthesis, lip-sync,\\audio or document fake};
+\draw[arr] (family) -- (swap);
+\draw[arr] (family) -- (reenact);
+\draw[arr] (family) -- (outside);
+\end{tikzpicture}
+
