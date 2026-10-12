@@ -14,8 +14,31 @@ import 'package:face_liveness_demo/pages/landing_page.dart';
 import 'package:face_liveness_demo/pages/liveness_page.dart';
 import 'package:face_liveness_demo/pages/success_page.dart';
 import 'package:face_liveness_demo/painters/scan_ring_painter.dart';
+import 'package:face_liveness_demo/services/stage_report.dart';
 import 'package:face_liveness_demo/theme/app_theme.dart';
 import 'package:face_liveness_demo/theme/theme_controller.dart';
+
+/// A representative pass, for the success-screen capture.
+const List<StageReport> _sample = [
+  StageReport(
+    layer: 1,
+    name: StageReport.layer1Name,
+    outcome: StageOutcome.passed,
+    detail: 'All 4 prompts, with 14s to spare',
+  ),
+  StageReport(
+    layer: 2,
+    name: StageReport.layer2Name,
+    outcome: StageOutcome.passed,
+    detail: 'Average 93% live · needs 80%\n2 of 24 frames below 80% · lowest 71%',
+  ),
+  StageReport(
+    layer: 3,
+    name: StageReport.layer3Name,
+    outcome: StageOutcome.passed,
+    detail: '98.8% live · routed to original',
+  ),
+];
 
 Future<void> _loadFonts() async {
   final inter = FontLoader('Inter');
@@ -83,9 +106,9 @@ void main() {
       shoot(t, 'landing-dark', const LandingPage(), ThemeMode.dark));
 
   testWidgets('success light', (t) => shoot(
-      t, 'success-light', const SuccessPage(confidence: 0.973), ThemeMode.light));
+      t, 'success-light', const SuccessPage(reports: _sample), ThemeMode.light));
   testWidgets('success dark', (t) => shoot(
-      t, 'success-dark', const SuccessPage(confidence: 0.973), ThemeMode.dark));
+      t, 'success-dark', const SuccessPage(reports: _sample), ThemeMode.dark));
 
   // No camera or model in the test host, so this captures the PREPARING state.
   testWidgets('liveness light', (t) =>

@@ -176,8 +176,8 @@ class _LandingPageState extends State<LandingPage>
           constraints: const BoxConstraints(maxWidth: 320),
           child: Text(
             'Your camera confirms a real person is present. '
-            'The check runs on this device; only an unclear result '
-            'is sent on for a second opinion.',
+            'An on-device model and a server-side deepfake check '
+            'both have to agree — one frame is uploaded for the second.',
             style: t.bodyLarge,
           ),
         ),
@@ -226,7 +226,7 @@ class _LandingPageState extends State<LandingPage>
         const SizedBox(height: Space.md),
         Center(
           child: Text(
-            'Takes about 15 seconds · On-device first',
+            'Takes about 15 seconds · Device + server',
             style: t.bodyMedium?.copyWith(
               color: p.textTertiary,
               fontSize: 12,

@@ -15,8 +15,9 @@ import '../services/liveness_model.dart';
 import '../theme/app_theme.dart';
 import '../widgets/animated_label.dart';
 import '../widgets/fade_rise.dart';
-import 'challenge_failed_page.dart';
+import '../services/stage_report.dart';
 import 'success_page.dart';
+import 'verification_failed_page.dart';
 
 /// Side of the square JPEG posted to stage 3.
 ///
@@ -37,17 +38,28 @@ Uint8List _encodeUploadJpeg(Uint8List rgb) {
   return img.encodeJpg(frame, quality: 92);
 }
 
-/// What stage 2 concluded about a clip.
-enum _Stage2 {
-  /// Every frame was confidently real. Decided on device, no network.
-  live,
+/// Stage 3's answer for one clip, or why there isn't one.
+///
+/// The server call runs alongside stage 2 and is sometimes never awaited (a
+/// stage-2 fake settles the clip on its own), so the future must never throw:
+/// an unawaited failing future is an unhandled error. Failures travel as data.
+class _ServerResult {
+  final Prediction? prediction;
+  final ApiFailure? failure;
+  final int elapsedMs;
 
-  /// Every frame was confidently a spoof. Also decided on device.
-  spoof,
+  const _ServerResult.ok(Prediction p, this.elapsedMs)
+      : prediction = p,
+        failure = null;
 
-  /// The frames disagreed, or some of them landed in the middle. This is the
-  /// only outcome that costs a round-trip.
-  uncertain,
+  const _ServerResult.failed(ApiFailure f, this.elapsedMs)
+      : prediction = null,
+        failure = f;
+
+  @override
+  String toString() => prediction != null
+      ? '$prediction · ${elapsedMs}ms round trip'
+      : 'failed: ${failure!.message} · ${elapsedMs}ms';
 }
 
 class LivenessPage extends StatefulWidget {
@@ -86,45 +98,49 @@ class _LivenessPageState extends State<LivenessPage>
   int _framesCollected = 0;
   DateTime? _windowStart;
 
-  // ── The escalation rule ──────────────────────────────────────────────────
-  // A clip is settled on device only when the frames are *unanimous* and past
-  // the margin. One frame in the middle, or two frames pointing opposite ways,
-  // and the decision is not ours to make — it goes to stage 3.
+  // ── The decision rule: both must say real ────────────────────────────────
+  // Stages 2 and 3 run in parallel on the same clip, and either one can veto:
   //
-  //   min(pReal) >= 0.80  ->  live    (decided here)
-  //   max(pReal) <= 0.20  ->  spoof   (decided here)
-  //   otherwise           ->  stage 3 (deepfake ensemble)
+  //   stage 2 fake                    ->  FAKE  (server not waited for)
+  //   stage 2 real, stage 3 FAKE      ->  FAKE
+  //   stage 2 real, stage 3 REAL      ->  REAL
+  //   stage 2 real, stage 3 no answer ->  not checked, retry
+  //
+  // Stage 2 says real when the clip's *average* P(real) clears
+  // [_liveThreshold]. Individual frames may dip below it — a blink or a bit of
+  // motion blur shouldn't sink an honest clip — and how many did is reported
+  // on the result screen.
 
-  /// Every frame must clear this for a local pass.
-  static const double _liveMargin = 0.80;
-
-  /// Every frame must sit below this for a local reject.
-  static const double _spoofMargin = 0.20;
+  /// The mean P(real) across the clip's frames must reach this for stage 2 to
+  /// call the clip real. Below it, stage 2 says fake.
+  static const double _liveThreshold = 0.80;
 
   // Inference state
   bool _hasResult = false;
   bool _isSpoof = false;
 
-  /// Probability that the face is real, on the scale the verdict was made on:
-  /// the clip's mean P(real) for a local decision, the ensemble's `1 -
-  /// prob_fake` for a server one. Not "confidence in the winning class" —
-  /// under a threshold that reading is backwards, because a clip at 0.55 is
-  /// rejected and reporting it as "55% spoof" would invert the number.
-  double _confidence = 0.0;
-
-  /// Per-frame spread from the last clip, shown so a near miss is legible.
-  double _minP = 0, _maxP = 0;
-
   // ── Stage 3 state ────────────────────────────────────────────────────────
+
+  /// Stage 2 has said real and the screen is waiting on the server's half.
   bool _isEscalating = false;
 
-  /// Set when stage 3 could not be reached. The check is not failed on this —
-  /// it retries on device — but the user is told the second opinion is missing.
-  String? _offlineNote;
+  // ── Result state ─────────────────────────────────────────────────────────
 
-  /// The ensemble's router class for the last server verdict, for the status
-  /// line. Detail only: the label comes from the score, never from this.
-  String? _routedTo;
+  /// Layer 1's receipt row: passed, or skipped by the toggle. Null only while
+  /// the challenges are still running.
+  StageReport? _layer1;
+
+  /// What the status line says in the beat between a failed verdict and the
+  /// failure screen opening.
+  ({String state, String title, String detail})? _ending;
+
+  /// Set once a result screen has been scheduled; see [_finish].
+  bool _finishScheduled = false;
+
+  /// This screen's route, captured where dependency lookups belong
+  /// ([didChangeDependencies]) so [_finish]'s delayed callback can check it
+  /// without subscribing to anything from outside a build.
+  ModalRoute<dynamic>? _route;
 
   /// Completed by the next camera frame when stage 3 needs an image.
   Completer<Uint8List>? _rawFrameRequest;
@@ -152,7 +168,6 @@ class _LivenessPageState extends State<LivenessPage>
 
   bool _isCollecting = false;
   int _sensorRotation = 0;
-  Timer? _restartTimer;
 
   static const List<double> _mean = [0.485, 0.456, 0.406];
   static const List<double> _std  = [0.229, 0.224, 0.225];
@@ -220,9 +235,18 @@ class _LivenessPageState extends State<LivenessPage>
 
     // The toggle is read once, here. Flipping it mid-check would change what
     // the screen is doing underneath the user.
-    if (ChallengeSettings.instance.enabled) {
+    final bool challenges = ChallengeSettings.instance.enabled;
+    debugPrint('check started · challenge layer '
+        '${challenges ? "ON" : "OFF (going straight to layers 2 + 3)"}');
+    if (challenges) {
       _beginChallenges();
     } else {
+      _layer1 = const StageReport(
+        layer: 1,
+        name: StageReport.layer1Name,
+        outcome: StageOutcome.skipped,
+        detail: 'Turned off on the landing screen',
+      );
       _startInference();
     }
   }
@@ -295,8 +319,15 @@ class _LivenessPageState extends State<LivenessPage>
   void _onChallengesPassed() {
     if (!_inChallenge) return;
     _budgetTicker?.cancel();
-    debugPrint('challenges passed: '
-        '${_challenge?.queue.map((c) => c.name).join(" → ")}');
+    final order = _challenge?.queue.map((c) => c.name).join(' → ') ?? '';
+    debugPrint('challenges passed: $order');
+    _layer1 = StageReport(
+      layer: 1,
+      name: StageReport.layer1Name,
+      outcome: StageOutcome.passed,
+      detail: 'All ${_challenge?.total ?? 4} prompts, with '
+          '${_challenge?.remaining.inSeconds ?? 0}s to spare',
+    );
     setState(() => _inChallenge = false);
     // Straight into the passive stages; the camera never stops.
     _startInference();
@@ -313,25 +344,27 @@ class _LivenessPageState extends State<LivenessPage>
     debugPrint('challenges failed on ${stage?.failedOn?.name} '
         '(${stage?.completed}/${stage?.total})');
 
-    setState(() {
-      _inChallenge = false;
-      _isNavigating = true;
-    });
+    setState(() => _inChallenge = false);
 
-    Navigator.of(context).pushReplacement(
-      PageRouteBuilder(
-        pageBuilder: (_, a, __) => ChallengeFailedPage(
-          failedOn: stage?.failedOn,
-          completed: stage?.completed ?? 0,
-          total: stage?.total ?? Challenge.values.length,
+    final failedOn = stage?.failedOn;
+    _finish(VerificationFailedPage(
+      headline: 'Verification failed',
+      reason: failedOn == null
+          ? 'The challenge check ran out of time.'
+          : 'The challenge check ran out of time on '
+              '“${failedOn.prompt.toLowerCase()}”.',
+      reports: [
+        StageReport(
+          layer: 1,
+          name: StageReport.layer1Name,
+          outcome: StageOutcome.failed,
+          detail: '${stage?.completed ?? 0} of '
+              '${stage?.total ?? Challenge.values.length} prompts in 30s',
         ),
-        transitionsBuilder: (_, a, __, child) => FadeTransition(
-          opacity: CurvedAnimation(parent: a, curve: Motion.enter),
-          child: child,
-        ),
-        transitionDuration: Motion.slow,
-      ),
-    );
+        _notReached(2),
+        _notReached(3),
+      ],
+    ), delay: Duration.zero);
   }
 
   /// Picks up the process-wide stage-2 module. Usually already warm from app
@@ -385,14 +418,14 @@ class _LivenessPageState extends State<LivenessPage>
 
   void _startInference() => _beginClip();
 
+  /// Arms collection for the check's one clip. Called once per check — every
+  /// outcome ends on a result screen, so there is no second clip.
   void _beginClip() {
     if (_isNavigating || !mounted) return;
     setState(() {
       _framesCollected = 0;
       _windowStart = DateTime.now();
       _hasResult = false;
-      _offlineNote = null;
-      _routedTo = null;
     });
     _setCollecting(true);
   }
@@ -616,10 +649,22 @@ class _LivenessPageState extends State<LivenessPage>
     return out;
   }
 
-  // ── Stage 2: MobileNetV2, per frame, on device ────────────────────────────
+  // ── Stages 2 and 3, in parallel ───────────────────────────────────────────
 
+  /// Scores the clip on device and, at the same time, asks the server about a
+  /// frame of it. The clip is real only if both say real.
+  ///
+  /// The server request goes out first, before the 24 forward passes, so its
+  /// round trip overlaps the on-device work instead of following it. A
+  /// stage-2 fake settles the clip without waiting for the server at all — the
+  /// request still finishes in the background and is logged, but it can no
+  /// longer change anything.
   Future<void> _runStage2() async {
     if (_module == null || _isNavigating || !mounted) return;
+
+    // Started first so the frame request is registered while the camera is
+    // still streaming. Never throws — see [_ServerResult].
+    final Future<_ServerResult> server = _askServer();
 
     setState(() => _isProcessing = true);
     final double clipSecs = _elapsedSeconds;
@@ -627,6 +672,7 @@ class _LivenessPageState extends State<LivenessPage>
 
     try {
       double minP = 1.0, maxP = 0.0, sumP = 0.0;
+      int below = 0;
 
       for (int k = 0; k < _clipFrames; k++) {
         if (!mounted || _isNavigating) return;
@@ -647,50 +693,136 @@ class _LivenessPageState extends State<LivenessPage>
         final double pReal = out[0];
         if (pReal < minP) minP = pReal;
         if (pReal > maxP) maxP = pReal;
+        if (pReal < _liveThreshold) below++;
         sumP += pReal;
       }
 
       final double meanP = sumP / _clipFrames;
-
-      final _Stage2 verdict = minP >= _liveMargin
-          ? _Stage2.live
-          : (maxP <= _spoofMargin ? _Stage2.spoof : _Stage2.uncertain);
+      final bool mobileReal = meanP >= _liveThreshold;
 
       debugPrint('stage2 ${clipSecs.toStringAsFixed(2)}s clip · '
           '${sw.elapsedMilliseconds}ms for $_clipFrames frames · '
           'pReal min=${minP.toStringAsFixed(3)} '
           'mean=${meanP.toStringAsFixed(3)} '
-          'max=${maxP.toStringAsFixed(3)} · ${verdict.name}');
+          'max=${maxP.toStringAsFixed(3)} · '
+          '$below/$_clipFrames below threshold · '
+          '${mobileReal ? "REAL" : "FAKE"}');
 
       if (!mounted) return;
-      setState(() {
-        _minP = minP;
-        _maxP = maxP;
-        _isProcessing = false;
-      });
+      setState(() => _isProcessing = false);
 
-      switch (verdict) {
-        case _Stage2.live:
-          setState(() {
-            _hasResult = true;
-            _isSpoof = false;
-            _confidence = meanP;
-          });
-          _onRealDetected();
-        case _Stage2.spoof:
-          setState(() {
-            _hasResult = true;
-            _isSpoof = true;
-            _confidence = meanP;
-          });
-          _onSpoofDetected();
-        case _Stage2.uncertain:
-          await _runStage3(fallbackConfidence: meanP);
+      String pct(double v) => '${(v * 100).toStringAsFixed(0)}%';
+      final String needed = pct(_liveThreshold);
+      // The same evidence on a pass or a fail: the average that decided it,
+      // and exactly how many frames fell short on their own.
+      final String layer2Detail =
+          'Average ${pct(meanP)} live · needs $needed\n'
+          '$below of $_clipFrames frames below $needed · '
+          'lowest ${pct(minP)}';
+
+      if (!mobileReal) {
+        // Layer 2 said fake. The server can't overturn that, so the result is
+        // settled now. Its answer is still shown when it lands — as evidence
+        // layer 3 works, marked as not having counted.
+        final layer2 = StageReport(
+          layer: 2,
+          name: StageReport.layer2Name,
+          outcome: StageOutcome.failed,
+          detail: layer2Detail,
+        );
+        final Future<StageReport> layer3 = server.then((r) {
+          debugPrint('stage3 (after stage-2 veto) $r');
+          return _layer3From(r, informational: r.prediction != null);
+        });
+        _finishFailed(
+          state: 'VERIFICATION FAILED',
+          headline: 'Verification failed',
+          reason: 'The on-device model averaged ${pct(meanP)} live across '
+              '$_clipFrames frames — below the $needed it needs.',
+          reports: [
+            _layer1Report,
+            layer2,
+            const StageReport(
+              layer: 3,
+              name: StageReport.layer3Name,
+              outcome: StageOutcome.pending,
+              detail: 'Doesn’t change the result — layer 2 already said no',
+            ),
+          ],
+          pendingLayer3: layer3,
+        );
+        return;
       }
+
+      final layer2 = StageReport(
+        layer: 2,
+        name: StageReport.layer2Name,
+        outcome: StageOutcome.passed,
+        detail: layer2Detail,
+      );
+
+      // Layer 2 says real. Now the server's half decides.
+      setState(() => _isEscalating = true);
+      final _ServerResult r = await server;
+      if (!mounted || _isNavigating) return;
+      debugPrint('stage3 $r');
+
+      final StageReport layer3 = _layer3From(r);
+      final Prediction? p = r.prediction;
+
+      if (p == null) {
+        // No verdict is not a spoof verdict, so say "couldn't complete" rather
+        // than "failed". But both layers must agree, so it can't pass either.
+        _finishFailed(
+          state: 'NOT COMPLETED',
+          headline: 'Couldn’t complete',
+          reason: 'The on-device model passed, but the deepfake ensemble '
+              'didn’t answer. Both have to agree, so this can’t count as '
+              'verified.',
+          reports: [_layer1Report, layer2, layer3],
+        );
+        return;
+      }
+
+      if (!p.isReal) {
+        _finishFailed(
+          state: 'VERIFICATION FAILED',
+          headline: 'Verification failed',
+          reason: 'The on-device model passed, but the deepfake ensemble '
+              'didn’t read a live face.',
+          reports: [_layer1Report, layer2, layer3],
+        );
+        return;
+      }
+
+      setState(() {
+        _isEscalating = false;
+        _hasResult = true;
+        _isSpoof = false;
+      });
+      _finish(SuccessPage(reports: [_layer1Report, layer2, layer3]));
     } catch (e) {
       debugPrint('Stage 2 error: $e');
-      if (mounted) setState(() => _isProcessing = false);
-      _retryShortly();
+      if (!mounted) return;
+      setState(() {
+        _isProcessing = false;
+        _isEscalating = false;
+      });
+      _finishFailed(
+        state: 'NOT COMPLETED',
+        headline: 'Couldn’t complete',
+        reason: 'The on-device model hit an error before it could decide.',
+        reports: [
+          _layer1Report,
+          StageReport(
+            layer: 2,
+            name: StageReport.layer2Name,
+            outcome: StageOutcome.noAnswer,
+            detail: '$e',
+          ),
+          _notReached(3),
+        ],
+      );
     } finally {
       if (mounted && _isProcessing) setState(() => _isProcessing = false);
     }
@@ -698,58 +830,29 @@ class _LivenessPageState extends State<LivenessPage>
 
   // ── Stage 3: the deepfake ensemble, over the network ──────────────────────
 
-  /// Sends one frame to the server and lets its verdict stand. Unreachable is
-  /// deliberately **not** a failed check: the user is told the second opinion
-  /// is missing and the loop starts a fresh clip, rather than being blocked by
-  /// a Kaggle notebook that happens to be asleep.
-  Future<void> _runStage3({required double fallbackConfidence}) async {
-    if (_isNavigating || !mounted) return;
-
+  /// One frame of the clip to the ensemble.
+  ///
+  /// Touches no widget state, so it is safe to leave running after the screen
+  /// has moved on — which happens whenever stage 2 vetoes. Its first real
+  /// statement registers the frame request synchronously, before the caller
+  /// reaches its own first `await`.
+  Future<_ServerResult> _askServer() async {
+    final sw = Stopwatch()..start();
     if (!BackendConfig.instance.isConfigured) {
-      debugPrint('Stage 3 skipped: no backend URL configured');
-      _showOffline('No second-opinion server is set up', fallbackConfidence);
-      return;
+      return const _ServerResult.failed(
+          ApiFailure(0, 'No backend URL is set'), 0);
     }
-
-    setState(() {
-      _isEscalating = true;
-      _offlineNote = null;
-    });
-
     try {
       final Uint8List rgb = await _requestRawFrame();
       final Uint8List jpeg = await compute(_encodeUploadJpeg, rgb);
       final Prediction p = await DeepfakeApi.predict(jpeg);
-      if (!mounted || _isNavigating) return;
-
-      debugPrint('stage3 $p');
-
-      setState(() {
-        _isEscalating = false;
-        _hasResult = true;
-        _isSpoof = !p.isReal;
-        // The server's own scale, so the number on screen matches the verdict
-        // that produced it.
-        _confidence = p.probReal;
-        _routedTo = p.routedTo;
-      });
-
-      if (p.isReal) {
-        _onRealDetected();
-      } else {
-        _onSpoofDetected();
-      }
+      return _ServerResult.ok(p, sw.elapsedMilliseconds);
     } on ApiFailure catch (f) {
-      debugPrint('Stage 3 failed: $f');
-      _showOffline(
-        f.isUnreachable
-            ? 'Second-opinion server unreachable'
-            : (f.isAuth ? 'Server rejected the API key' : f.message),
-        fallbackConfidence,
-      );
+      return _ServerResult.failed(f, sw.elapsedMilliseconds);
     } catch (e) {
-      debugPrint('Stage 3 error: $e');
-      _showOffline('Second opinion unavailable', fallbackConfidence);
+      return _ServerResult.failed(
+          ApiFailure(0, 'Second opinion unavailable: $e'),
+          sw.elapsedMilliseconds);
     }
   }
 
@@ -760,50 +863,105 @@ class _LivenessPageState extends State<LivenessPage>
     return c.future.timeout(
       const Duration(seconds: 4),
       onTimeout: () {
-        _rawFrameRequest = null;
+        // Only clear the slot if it is still ours: an abandoned request timing
+        // out (after a stage-2 veto) must not cancel the next clip's.
+        if (identical(_rawFrameRequest, c)) _rawFrameRequest = null;
         throw const ApiFailure(0, 'The camera did not deliver a frame');
       },
     );
   }
 
-  void _showOffline(String note, double fallbackConfidence) {
+  // ── Ending the check ──────────────────────────────────────────────────────
+  // One attempt per check. Every outcome ends on a result screen; nothing
+  // loops back into another clip.
+
+  /// Layer 1's row, whether it passed or was switched off.
+  StageReport get _layer1Report =>
+      _layer1 ??
+      const StageReport(
+        layer: 1,
+        name: StageReport.layer1Name,
+        outcome: StageOutcome.skipped,
+      );
+
+  StageReport _notReached(int layer) => StageReport(
+        layer: layer,
+        name: layer == 2 ? StageReport.layer2Name : StageReport.layer3Name,
+        outcome: StageOutcome.notReached,
+        detail: 'An earlier layer ended the check',
+      );
+
+  /// Turns a server result into layer 3's receipt row. Touches no widget
+  /// state, so it is safe to run after this screen has gone.
+  StageReport _layer3From(_ServerResult r, {bool informational = false}) {
+    final Prediction? p = r.prediction;
+    if (p == null) {
+      final f = r.failure!;
+      return StageReport(
+        layer: 3,
+        name: StageReport.layer3Name,
+        outcome: StageOutcome.noAnswer,
+        detail: !BackendConfig.instance.isConfigured
+            ? 'No server URL set'
+            : f.isUnreachable
+                ? 'Server unreachable — ${f.message}'
+                : (f.isAuth ? 'Server rejected the API key' : f.message),
+      );
+    }
+    return StageReport(
+      layer: 3,
+      name: StageReport.layer3Name,
+      outcome: p.isReal ? StageOutcome.passed : StageOutcome.failed,
+      detail: '${(p.probReal * 100).toStringAsFixed(1)}% live · '
+          'routed to ${p.routedTo}',
+      informational: informational,
+    );
+  }
+
+  /// Closes the ring in red, holds it for a beat, then opens the failure
+  /// screen. [state] is what the status line says during that beat.
+  void _finishFailed({
+    required String state,
+    required String headline,
+    required String reason,
+    required List<StageReport> reports,
+    Future<StageReport>? pendingLayer3,
+  }) {
     if (!mounted || _isNavigating) return;
     setState(() {
       _isEscalating = false;
       _hasResult = true;
-      // Nothing confirmed a live face, so the ring must not read as a pass —
-      // but the copy says "couldn't check", not "you failed".
       _isSpoof = true;
-      _confidence = fallbackConfidence;
-      _offlineNote = note;
+      _ending = (state: state, title: headline, detail: reason);
     });
-    _retryShortly();
+    _finish(VerificationFailedPage(
+      headline: headline,
+      reason: reason,
+      reports: reports,
+      pendingLayer3: pendingLayer3,
+    ));
   }
 
-  /// A verdict shows, then a fresh clip starts — the user is never stuck on a
-  /// dead end, whichever stage produced it.
-  void _onSpoofDetected() => _retryShortly();
-
-  void _retryShortly() {
-    _restartTimer?.cancel();
-    _restartTimer = Timer(const Duration(milliseconds: 3500), () {
-      if (!mounted || _isNavigating) return;
-      _beginClip();
-    });
-  }
-
-  void _onRealDetected() {
-    if (_isNavigating) return;
+  /// Replaces this screen with a result screen. The default delay lets the
+  /// ring settle on its final colour before the screen changes.
+  ///
+  /// Guarded twice, because a route change here that goes wrong corrupts the
+  /// navigator rather than failing cleanly:
+  /// - it runs at most once per screen, whatever calls it;
+  /// - by the time the delay ends, this screen must still be the top route. A
+  ///   route that is popping is still `mounted`, and `pushReplacement` from it
+  ///   would replace whatever is on top instead — the landing page.
+  void _finish(Widget page,
+      {Duration delay = const Duration(milliseconds: 850)}) {
+    if (!mounted || _finishScheduled) return;
+    _finishScheduled = true;
     setState(() => _isNavigating = true);
-    _restartTimer?.cancel();
 
-    // Let the ring settle on the verified state before the screen changes.
-    Future.delayed(const Duration(milliseconds: 850), () {
-      if (!mounted) return;
+    void go() {
+      if (!mounted || _route?.isCurrent != true) return;
       Navigator.of(context).pushReplacement(
         PageRouteBuilder(
-          pageBuilder: (_, a, __) =>
-              SuccessPage(confidence: _confidence, routedTo: _routedTo),
+          pageBuilder: (_, a, __) => page,
           transitionsBuilder: (_, a, __, child) => FadeTransition(
             opacity: CurvedAnimation(parent: a, curve: Motion.enter),
             child: child,
@@ -811,7 +969,19 @@ class _LivenessPageState extends State<LivenessPage>
           transitionDuration: Motion.slow,
         ),
       );
-    });
+    }
+
+    if (delay == Duration.zero) {
+      go();
+    } else {
+      Future.delayed(delay, go);
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _route = ModalRoute.of(context);
   }
 
   @override
@@ -820,7 +990,6 @@ class _LivenessPageState extends State<LivenessPage>
     _spinCtrl.dispose();
     _tickPhaseCtrl.dispose();
     _tickAmpCtrl.dispose();
-    _restartTimer?.cancel();
     _budgetTicker?.cancel();
     _passedTimer?.cancel();
     // Stop feeding the converter before the controller goes away.
@@ -842,6 +1011,15 @@ class _LivenessPageState extends State<LivenessPage>
 
   @override
   Widget build(BuildContext context) {
+    // Once a result is decided the screen is committed to replacing itself;
+    // backing out in the 850ms beat would race that replacement.
+    return PopScope(
+      canPop: !_isNavigating,
+      child: _buildScaffold(),
+    );
+  }
+
+  Widget _buildScaffold() {
     return Scaffold(
       body: SafeArea(
         child: Column(
@@ -881,6 +1059,8 @@ class _LivenessPageState extends State<LivenessPage>
             label: 'Back',
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
+              // maybePop respects the PopScope above, so this is inert once a
+              // result is decided.
               onTap: () => Navigator.of(context).maybePop(),
               child: SizedBox(
                 width: 44,
@@ -1128,13 +1308,23 @@ class _LivenessPageState extends State<LivenessPage>
 
   ({String state, String title, String detail, Color tone, bool working}) _statusFor(
       AppPalette p) {
+    // Checked before `_isNavigating`: a failure also navigates, and must not
+    // read as VERIFIED during the beat before its screen opens.
+    final ending = _ending;
+    if (ending != null) {
+      return (
+        state: ending.state,
+        title: ending.title,
+        detail: ending.detail,
+        tone: p.danger,
+        working: false,
+      );
+    }
     if (_isNavigating) {
       return (
         state: 'VERIFIED',
         title: 'Live face confirmed',
-        detail: _routedTo == null
-            ? 'Taking you through…'
-            : 'Confirmed by the ensemble · taking you through…',
+        detail: 'On device and by the ensemble · taking you through…',
         tone: p.success,
         working: false,
       );
@@ -1151,41 +1341,19 @@ class _LivenessPageState extends State<LivenessPage>
     if (_inChallenge) return _challengeStatus(p);
     if (_isEscalating) {
       return (
-        state: 'SECOND OPINION',
-        title: 'Frames didn’t agree',
-        detail: 'Asking the deepfake ensemble — this needs the network',
+        state: 'CONFIRMING',
+        title: 'On-device check passed',
+        detail: 'Waiting for the deepfake ensemble to agree',
         tone: p.textSecondary,
         working: true,
-      );
-    }
-    if (_offlineNote != null) {
-      return (
-        state: 'NOT CHECKED',
-        title: 'Couldn’t get a second opinion',
-        detail: '$_offlineNote · trying again',
-        tone: p.danger,
-        working: false,
-      );
-    }
-    if (_hasResult && _isSpoof) {
-      return (
-        state: 'NOT CONFIRMED',
-        title: 'That didn’t read as a live face',
-        detail: _routedTo == null
-            // Local reject: every frame agreed, so the range is the evidence.
-            ? 'On-device ${(_minP * 100).toStringAsFixed(0)}'
-                '–${(_maxP * 100).toStringAsFixed(0)}% live · trying again'
-            : 'Ensemble ${(_confidence * 100).toStringAsFixed(0)}% live'
-                ' · routed to $_routedTo · trying again',
-        tone: p.danger,
-        working: false,
       );
     }
     if (_isProcessing) {
       return (
         state: 'ANALYSING',
         title: 'Checking the clip',
-        detail: 'All $_clipFrames frames, one by one, on this device',
+        detail: 'All $_clipFrames frames on this device · '
+            'the ensemble checks one in parallel',
         tone: p.textSecondary,
         working: true,
       );

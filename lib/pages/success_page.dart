@@ -1,22 +1,17 @@
 import 'package:flutter/material.dart';
 import '../painters/scan_ring_painter.dart';
+import '../services/stage_report.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_button.dart';
 import '../widgets/fade_rise.dart';
+import '../widgets/stage_receipt.dart';
 
 class SuccessPage extends StatefulWidget {
-  /// Probability that the clip showed a real face, 0–1, on the scale of
-  /// whichever stage decided it.
-  final double confidence;
+  /// How each layer voted. Shown in full so a demo can point at every layer
+  /// that passed, not just the fact of a pass.
+  final List<StageReport> reports;
 
-  /// The ensemble's router class when stage 3 made the call, `null` when the
-  /// on-device model settled it alone. The receipt has to say which, because
-  /// "processed on device" stops being true the moment a frame is uploaded.
-  final String? routedTo;
-
-  const SuccessPage({super.key, this.confidence = 0, this.routedTo});
-
-  bool get verifiedOnDevice => routedTo == null;
+  const SuccessPage({super.key, this.reports = const []});
 
   @override
   State<SuccessPage> createState() => _SuccessPageState();
@@ -73,7 +68,7 @@ class _SuccessPageState extends State<SuccessPage>
               const Spacer(flex: 2),
               FadeRise(
                 delay: const Duration(milliseconds: 620),
-                child: _receipt(t, p),
+                child: StageReceipt(reports: widget.reports),
               ),
               const SizedBox(height: Space.lg),
               FadeRise(
@@ -141,81 +136,12 @@ class _SuccessPageState extends State<SuccessPage>
         ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 300),
           child: Text(
-            widget.verifiedOnDevice
-                ? 'A live face was confirmed on this device.'
-                : 'The on-device frames disagreed, so one was checked '
-                    'by the deepfake ensemble. It came back live.',
+            'Every layer that ran read a live face.',
             textAlign: TextAlign.center,
             style: t.bodyLarge,
           ),
         ),
       ],
-    );
-  }
-
-  // ── Receipt ───────────────────────────────────────────────────────────────
-  // Two hairline rows of metadata. This is where the app earns its "secure"
-  // claim — with facts, not with a badge that says SECURE.
-  Widget _receipt(TextTheme t, AppPalette p) {
-    return Column(
-      children: [
-        Divider(color: p.borderSubtle),
-        const _ReceiptRow(label: 'Liveness check', value: 'Passed'),
-        Divider(color: p.borderSubtle),
-        _ReceiptRow(
-          label: 'Liveness score',
-          value: widget.confidence > 0
-              ? '${(widget.confidence * 100).toStringAsFixed(1)}%'
-              : '—',
-        ),
-        Divider(color: p.borderSubtle),
-        _ReceiptRow(
-          label: 'Decided by',
-          value: widget.verifiedOnDevice
-              ? 'MobileNetV2 · on device'
-              : 'Ensemble · ${widget.routedTo}',
-        ),
-        Divider(color: p.borderSubtle),
-        _ReceiptRow(
-          label: 'Processed',
-          value: widget.verifiedOnDevice ? 'On device' : 'One frame uploaded',
-        ),
-        Divider(color: p.borderSubtle),
-      ],
-    );
-  }
-}
-
-class _ReceiptRow extends StatelessWidget {
-  final String label;
-  final String value;
-
-  const _ReceiptRow({required this.label, required this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    final t = Theme.of(context).textTheme;
-    final p = context.palette;
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 13),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(
-            label,
-            style: t.bodyMedium?.copyWith(color: p.textTertiary),
-          ),
-          Text(
-            value,
-            style: t.bodyMedium?.copyWith(
-              color: p.textPrimary,
-              fontWeight: FontWeight.w500,
-              fontFeatures: AppTheme.tabular,
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

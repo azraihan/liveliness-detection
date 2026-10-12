@@ -9,14 +9,14 @@
 ---
 
 A face liveness detection app built in Flutter, running a **three-stage
-cascade**. Stage 1 is an ML Kit challenge sequence — turn, blink, smile, in a
-random order, on one 30-second clock. Stage 2 is a MobileNetV2 anti-spoofing
-model scored on every frame of a short clip, entirely on the device. Only when
-those frames fail to agree does the app spend a network round-trip on stage 3, a
-FastAPI deepfake ensemble. Most checks never leave the phone.
+check**. Stage 1 is an ML Kit challenge sequence — turn, blink, smile, in a
+random order, on one 30-second clock. Then two models judge the same clip **in
+parallel**: stage 2, a MobileNetV2 anti-spoofing model scored on every frame on
+the device, and stage 3, a FastAPI deepfake ensemble that gets one frame. The
+face passes only if **both** say real; either one alone can reject it.
 
-Stage 1 can be switched off from the landing screen, which leaves the original
-two passive stages. See [Three-stage pipeline](#-three-stage-pipeline).
+Stage 1 can be switched off from the landing screen, which leaves the two model
+stages. See [Three-stage pipeline](#-three-stage-pipeline).
 
 The interface is deliberately quiet: a neutral stone palette, one accent (ink on
 paper), hierarchy carried by opacity rather than colour, and motion used only
@@ -71,10 +71,11 @@ compare the PNGs as goldens, and they render slightly differently per machine.
         │  turn · blink · smile, random order, 30s total, 1 attempt
         │  fail ──> dead end, later stages never run
         ▼
-        ┌─ Anti-spoofing ───────────── MobileNetV2, on device, 24 frames
-        │  unanimous? decide here
-        ▼  otherwise
-        └─ Deepfake ensemble ───────── FastAPI over ngrok, 1 frame
+        ├─ Anti-spoofing ──── MobileNetV2, on device, 24 frames ──┐
+        │                                                         │ both run
+        └─ Deepfake ensemble ─ FastAPI over ngrok, 1 frame ───────┘ in parallel
+
+        REAL only if both say real · either one says fake -> FAKE
 ```
 
 ### Stage 1 — ML Kit challenges (toggleable)
@@ -101,12 +102,12 @@ Three details carry most of the security value:
 
 **One attempt, one 30-second budget shared across all four prompts.** Time
 banked on an easy prompt is available for a hard one. When the clock runs out
-the check is over: [`ChallengeFailedPage`](lib/pages/challenge_failed_page.dart)
-is a dead end with a single *Start over* button, and stages 2 and 3 never run.
+the check is over and the failure screen opens; stages 2 and 3 never run.
 
-The toggle on the landing screen removes this stage entirely, leaving the two
-passive stages below. It is read once when the verification screen opens, so
-flipping it cannot change what a check is doing mid-run.
+The toggle on the landing screen removes this stage entirely, so a check goes
+straight to stages 2 and 3 — use it to demo the model layers on their own. It
+is read once when the verification screen opens, so flipping it cannot change
+what a check is doing mid-run.
 
 > The camera stays on `yuv420` for the tensor path, so frames are repacked to
 > NV21 for ML Kit rather than reconfiguring the controller between stages.
@@ -119,35 +120,62 @@ already through a sigmoid inside the traced graph, and it is **P(real)** — not
 P(spoof), and nothing to soft-max.
 
 The app collects 24 consecutive frames off the camera stream (well under a
-second of wall clock) and scores each one on its own. The clip is settled
-locally only when the frames are **unanimous and past the margin**:
-
-| Condition | Outcome |
-|---|---|
-| `min(pReal) >= 0.80` | **Live** — verified on device, no network |
-| `max(pReal) <= 0.20` | **Spoof** — rejected on device, no network |
-| anything else | **Escalate** to stage 3 |
-
-That middle row is the point of the cascade. One frame sitting at 0.5, or two
-frames pointing opposite ways, means the local model is not actually sure — and
-an unsure verdict is exactly the one worth paying a round-trip for.
+second of wall clock) and scores each one on its own. Stage 2 says **real when
+the average `pReal` across the 24 frames is at least 0.80**, and fake below it.
+Individual frames may dip under 0.80 — a blink or a moment of motion blur
+shouldn't sink an honest clip — and the result screen shows exactly how many
+did, alongside the average and the lowest frame.
 
 ### Stage 3 — the deepfake ensemble, over the network
 
 A single 384² JPEG, cropped and rotated the same way stage 2's tensors were, is
 posted to `POST /predict` on the FastAPI server described in
-[`FRONTEND_INTEGRATION.md`](../FRONTEND_INTEGRATION.md). Its verdict stands:
-`REAL` passes, `FAKE` fails.
+[`FRONTEND_INTEGRATION.md`](../FRONTEND_INTEGRATION.md). The request goes out
+the moment the clip is collected, *before* stage 2's 24 forward passes, so the
+round trip overlaps the on-device work.
 
-**Unreachable is not a failure.** The backend lives in a Kaggle notebook behind
-a free ngrok tunnel, so it is asleep as often as not. When the call fails the
-screen says the second opinion is missing and starts a fresh clip, rather than
-failing a user for someone else's notebook being down.
+### How the two verdicts combine
+
+| Stage 2 | Stage 3 | Result |
+|---|---|---|
+| fake | *(not waited for)* | **FAKE** |
+| real | FAKE | **FAKE** |
+| real | REAL | **REAL** |
+| real | unreachable / error | **Couldn't complete** |
+
+A stage-2 fake settles the clip immediately, because nothing the server says can
+overturn it. The failure screen opens straight away with layer 3's row marked
+*Checking…*; when the server's answer lands the row fills in as "Would say
+passed/failed" — visibly working, labelled as not having counted.
+
+**Unreachable is not a failure, but it is not a pass either.** The backend lives
+in a Kaggle notebook behind a free ngrok tunnel. When it doesn't answer, the
+check ends as *Couldn't complete* rather than *Verification failed*. Since a
+pass needs both halves, **no check can pass while the server is down** — that
+is the cost of the both-must-agree rule.
+
+### One attempt per check
+
+Every check captures **one** clip and ends on a result screen — there is no
+retry loop at any layer. Both screens carry the same per-layer receipt
+([`StageReceipt`](lib/widgets/stage_receipt.dart)), one row per layer with its
+outcome and the evidence behind it:
+
+```
+01  Challenge check     All 4 prompts, with 14s to spare        ● Passed
+02  On-device model     Average 93% live · needs 80%             ● Passed
+                        2 of 24 frames below 80% · lowest 71%
+03  Deepfake ensemble   98.8% live · routed to original         ● Passed
+```
+
+A layer that never ran says *Skipped* (toggle off) or *Not reached* (an earlier
+layer ended the check). *Start over* returns to the landing screen for a fresh
+check.
 
 The URL changes on every notebook restart, so it is **configuration, not a
 constant**: the slider icon on the landing screen opens a sheet that saves a new
 base URL and key, tests them against `/health` and `/metrics`, and persists
-both. Clearing the URL turns stage 3 off and leaves the app on-device only.
+both.
 
 > **Note on scope.** Stage 2 is a *presentation-attack* detector — print, replay,
 > mask. Stage 3 is trained on FaceForensics++ and detects *digital face
@@ -293,7 +321,8 @@ lib/
 │   ├── challenge_settings.dart    # The stage-1 toggle, persisted
 │   ├── deepfake_api.dart          # Stage-3 client — /health, /metrics, /predict
 │   ├── face_challenge.dart        # Stage 1 — ML Kit detector, prompts, rules, 30s clock
-│   └── liveness_model.dart        # Process-wide TorchScript modules, loaded once
+│   ├── liveness_model.dart        # Process-wide TorchScript modules, loaded once
+│   └── stage_report.dart          # How one layer ended, for the result screens
 ├── painters/
 │   └── scan_ring_painter.dart     # Progress ring, capture ticks, scan sweep, orbit mark, checkmark
 ├── widgets/
@@ -301,12 +330,13 @@ lib/
 │   ├── app_button.dart            # The app's only button (solid / quiet)
 │   ├── backend_settings_sheet.dart# Stage-3 URL/key editor with a connection test
 │   ├── fade_rise.dart             # Staggered entrance primitive
+│   ├── stage_receipt.dart         # Per-layer receipt on both result screens
 │   └── theme_toggle.dart          # Light ↔ dark control
 └── pages/
-    ├── challenge_failed_page.dart # Dead end when the stage-1 clock runs out
+    ├── verification_failed_page.dart # Dead end for any failed check, with the layer receipt
     ├── landing_page.dart          # Instructions, challenge toggle, start
     ├── liveness_page.dart         # Camera, all three stages, status
-    └── success_page.dart          # Verified result + receipt
+    └── success_page.dart          # Verified result + the layer receipt
 
 assets/fonts/                      # Inter (300/400/500/600)
 docs/screens/                      # Screenshots above
@@ -447,13 +477,12 @@ static const double _smiling    = 0.70;
 static const bool   invertYaw   = false; // flip if left/right come out swapped
 ```
 
-**Escalation margins** — in `liveness_page.dart`:
+**Stage-2 threshold** — in `liveness_page.dart`:
 ```dart
-static const double _liveMargin  = 0.80;  // every frame must clear this to pass locally
-static const double _spoofMargin = 0.20;  // every frame must sit below this to fail locally
+static const double _liveThreshold = 0.80;  // the clip's average must reach this for stage 2 to say real
 ```
-Widening the gap between them sends more clips to stage 3 — safer, slower, and
-useless when the server is down. Narrowing it keeps more decisions on device.
+Raising it makes stage 2 veto more often (fewer spoofs through, more honest
+users retried). Lowering it hands more of the decision to stage 3.
 
 **Clip length** — `_clipFrames` in `liveness_page.dart` is just the consistency
 window now: stage 2 is a per-frame model, so this can be changed freely. More
@@ -484,7 +513,7 @@ google_mlkit_face_detection: ^0.14.0  # Stage 1 — head pose, eye-open, smile
 flutter_pytorch_lite: ^0.1.0+3  # Stage 2 — on-device TorchScript inference
 http: ^1.2.0                    # Stage 3 — multipart upload to the ensemble
 http_parser: ^4.0.2             # image/jpeg part type on that upload
-image: ^4.1.7                   # JPEG-encodes the escalated frame
+image: ^4.1.7                   # JPEG-encodes the frame sent to stage 3
 shared_preferences: ^2.2.3      # Remembers the stage-3 URL and key, and the toggle
 ```
 
@@ -499,9 +528,9 @@ shared_preferences: ^2.2.3      # Remembers the stage-3 URL and key, and the tog
 | iOS build fails with signing error | In Xcode → Signing & Capabilities → set a valid team |
 | Android: `minSdkVersion` error | Set `minSdkVersion 21` in `android/app/build.gradle` |
 | Pub get fails | Run `flutter clean && flutter pub get` |
-| `NOT CHECKED — server unreachable` | The ngrok URL changed. Get the current `PUBLIC URL` from the notebook and paste it into the settings sheet |
-| `NOT CHECKED — rejected the API key` | The `API_KEY` Kaggle secret was rotated; paste the new one |
-| Every clip escalates | Stage 2 is never unanimous — usually poor lighting, or margins set too far apart |
+| *Couldn't complete* — layer 3 "Server unreachable" | The ngrok URL changed. Get the current `PUBLIC URL` from the notebook and paste it into the settings sheet |
+| *Couldn't complete* — layer 3 "rejected the API key" | The `API_KEY` Kaggle secret was rotated; paste the new one |
+| Every clip is rejected on device | The clip's average stays under 0.80 — usually poor lighting. The result screen shows the average and how many frames fell short |
 | "Turn left" only passes when you turn right | ML Kit's yaw sign is inverted on this device. Flip `invertYaw` in `face_challenge.dart` |
 | Challenge stage always times out | Check the status line: "No face in frame" means ML Kit isn't seeing you; otherwise the thresholds may be too strict |
 

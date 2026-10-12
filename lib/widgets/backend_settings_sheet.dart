@@ -63,8 +63,9 @@ class _BackendSettingsSheetState extends State<BackendSettingsSheet> {
     if (!BackendConfig.instance.isConfigured) {
       setState(() {
         _testing = false;
-        _ok = true;
-        _result = 'Saved with no URL — stage 3 is off, checks stay on-device';
+        _ok = false;
+        _result = 'Saved with no URL — no check can pass until one is set, '
+            'because a pass needs the server to agree';
       });
       return;
     }
@@ -188,7 +189,7 @@ class _BackendSettingsSheetState extends State<BackendSettingsSheet> {
             const SizedBox(height: Space.sm),
             Center(
               child: Text(
-                'Clearing the URL turns stage 3 off entirely.',
+                'Both checks must agree, so without a server nothing passes.',
                 style: t.bodyMedium?.copyWith(
                   color: p.textGhost,
                   fontSize: 12,
